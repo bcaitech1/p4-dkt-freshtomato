@@ -41,7 +41,7 @@ def parse_args(mode='train'):
     parser.add_argument('--log_steps', default=50, type=int, help='print log per n steps')
     
     # wandb
-    parser.add_argument('--run_name', default=None, type=str, help='wandb run name')
+    parser.add_argument('--wandb_run_name', default=None, type=str, help='wandb run name')
     
 
     ### 중요 ###

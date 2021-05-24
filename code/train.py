@@ -22,11 +22,11 @@ def main(args):
     
     wandb.init(project='freshtomato', config=vars(args))
     
-    if args.run_name:
-        wandb.run.name = args.run_name
+    if args.wandb_run_name:
+        wandb.run.name = args.wandb_run_name
     else:
-        args.run_name = wandb.run.name
-    print(args.run_name, wandb.run.name)
+        args.wandb_run_name = wandb.run.name
+    args.model_dir = f'{args.model_dir}/{args.wandb_run_name}'
     
     trainer.run(args, train_data, valid_data)
     
