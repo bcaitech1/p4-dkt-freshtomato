@@ -8,7 +8,7 @@ from .optimizer import get_optimizer
 from .scheduler import get_scheduler
 from .criterion import get_criterion
 from .metric import get_metric
-from .model import LSTM
+from .model import LSTM, LSTMATTN, Bert
 
 import wandb
 
@@ -192,13 +192,17 @@ def get_model(args):
     """
     Load model and move tensors to a given devices.
     """
+    model = None
     if args.model == "lstm":
         model = LSTM(args)
     if args.model == "lstmattn":
         model = LSTMATTN(args)
     if args.model == "bert":
         model = Bert(args)
-
+    
+    if not model:
+        raise RuntimeError(f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert")
+    
     model.to(args.device)
 
     return model
