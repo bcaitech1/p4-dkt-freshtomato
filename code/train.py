@@ -22,16 +22,16 @@ def main(args):
     
     wandb.init(project='freshtomato', config=vars(args))
     
+    trainer.run(args, train_data, valid_data)
+    
+
+if __name__ == "__main__":
+    args = parse_args(mode='train')
     if args.wandb_run_name:
         wandb.run.name = args.wandb_run_name
     else:
         args.wandb_run_name = wandb.run.name
     args.model_dir = f'{args.model_dir}/{args.wandb_run_name}'
     
-    trainer.run(args, train_data, valid_data)
-    
-
-if __name__ == "__main__":
-    args = parse_args(mode='train')
-    os.makedirs(args.model_dir, exist_ok=True)
+    os.makedirs(args.model_dir, exist_ok=True) # model_dir : ./models, wandb_run_name tomato -> ./models/tomato
     main(args)

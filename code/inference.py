@@ -18,5 +18,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args(mode='train')
-    os.makedirs(args.model_dir, exist_ok=True)
+    # os.makedirs(args.model_dir, exist_ok=True) # model_dir : ./models/tomato // model_dir: ./models + wandb_run_name: tomato
+    args.model_dir = f'{args.model_dir}/{args.wandb_run_name}'
     main(args)
