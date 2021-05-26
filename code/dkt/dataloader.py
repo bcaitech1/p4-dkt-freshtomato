@@ -168,8 +168,7 @@ class DKTDataset(torch.utils.data.Dataset):
 
         # 각 data의 sequence length
         seq_len = len(row[0])
-
-        test, question, tag, correct = row[0], row[1], row[2], row[3]
+        test, question, tag, correct = row
 
         cate_cols = [test, question, tag, correct]
 

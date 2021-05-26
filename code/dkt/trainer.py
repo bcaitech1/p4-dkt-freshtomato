@@ -40,17 +40,22 @@ def run(args, train_data, valid_data):
         ### VALID
         auc, acc, _, _ = validate(valid_loader, model, args)
 
-        ### TODO: model save or early stopping
+        try:
+            fold_str = f"fold{args.fold}-"
+        except:
+            fold_str = ""
         wandb.log(
             {
                 "epoch": epoch,
-                "train_loss": train_loss,
-                "train_auc": train_auc,
-                "train_acc": train_acc,
-                "valid_auc": auc,
-                "valid_acc": acc,
+                f"{fold_str}train_loss": train_loss,
+                f"{fold_str}train_auc": train_auc,
+                f"{fold_str}train_acc": train_acc,
+                f"{fold_str}valid_auc": auc,
+                f"{fold_str}valid_acc": acc,
             }
         )
+        
+        ### TODO: model save or early stopping
         if auc > best_auc:
             best_epoch_auc = epoch  # best_auc가 출현한 epoch
             best_auc = auc
@@ -72,6 +77,7 @@ def run(args, train_data, valid_data):
                     f"EarlyStopping counter: {early_stopping_counter} out of {args.patience}"
                 )
                 break
+            
         # best accuracy 저장
         if acc > best_acc:
             best_acc = acc
@@ -105,7 +111,7 @@ def train(train_loader, model, optimizer, args):
     for step, batch in enumerate(train_loader):
         input = process_batch(batch, args)
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         loss = compute_loss(preds, targets)
         update_params(loss, model, optimizer, args)
@@ -127,7 +133,7 @@ def train(train_loader, model, optimizer, args):
         total_preds.append(preds)
         total_targets.append(targets)
         losses.append(loss)
-
+    
     total_preds = np.concatenate(total_preds)
     total_targets = np.concatenate(total_targets)
 
@@ -147,7 +153,7 @@ def validate(valid_loader, model, args):
         input = process_batch(batch, args)
 
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         # predictions
         preds = preds[:, -1]
@@ -250,17 +256,11 @@ def process_batch(batch, args):
     interaction = interaction.roll(shifts=1, dims=1)
     interaction[:, 0] = 0  # set padding index to the first sequence
     interaction = (interaction * mask).to(torch.int64)
-    # print(interaction)
-    # exit()
+
     #  test_id, question_id, tag
     test = ((test + 1) * mask).to(torch.int64)
     question = ((question + 1) * mask).to(torch.int64)
     tag = ((tag + 1) * mask).to(torch.int64)
-
-    # gather index
-    # 마지막 sequence만 사용하기 위한 index
-    gather_index = torch.tensor(np.count_nonzero(mask, axis=1))
-    gather_index = gather_index.view(-1, 1) - 1
 
     # device memory로 이동
 
@@ -272,9 +272,8 @@ def process_batch(batch, args):
     mask = mask.to(args.device)
 
     interaction = interaction.to(args.device)
-    gather_index = gather_index.to(args.device)
 
-    return (test, question, tag, correct, mask, interaction, gather_index)
+    return (test, question, tag, mask, interaction, correct)
 
 
 # loss계산하고 parameter update!

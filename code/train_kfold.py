@@ -35,18 +35,20 @@ def main(args):
     args.model_dir = os.path.join(args.model_dir, args.wandb_run_name)
     model_dir = args.model_dir
 
+    wandb.init(
+            project=args.wandb_project_name,
+            name=args.wandb_run_name,
+            config=vars(args),
+        )
+
     # fold별 acc&auc와 average acc&auc를 저장할 dictionary
     final_score_dict = {}
     # K-Fold 학습 시작
     for train_idx, test_idx in skf.split(train_all_data, user_stratified_key):
+        args.fold = fold_counter
+
         train_data = train_all_data[train_idx]
         valid_data = train_all_data[test_idx]
-
-        wandb.init(
-            project=args.wandb_project_name,
-            name=args.wandb_run_name + f"_fold_{fold_counter}",
-            config=vars(args),
-        )
 
         args.model_dir = f"{model_dir}/fold_{fold_counter}"
         print(f"Start training fold {fold_counter}")
@@ -63,7 +65,6 @@ def main(args):
             ] = load_dict_per_fold["best_valid_acc"]
 
         fold_counter += 1
-        wandb.finish()
 
     final_score_dict["Average AUC"] = np.mean(
         [val for key, val in final_score_dict.items() if key.endswith("AUC")]
