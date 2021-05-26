@@ -178,7 +178,11 @@ def inference(args, test_data):
 
         total_preds += list(preds)
 
-    write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
+    try:
+        write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv")
+    except:
+        write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
+
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     with open(write_path, "w", encoding="utf8") as w:
