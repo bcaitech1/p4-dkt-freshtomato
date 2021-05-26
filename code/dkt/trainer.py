@@ -134,12 +134,8 @@ def train(train_loader, model, optimizer, args):
         total_targets.append(targets)
         losses.append(loss)
     
-    print(len(total_preds))
-    print(len(total_targets))
     total_preds = np.concatenate(total_preds)
     total_targets = np.concatenate(total_targets)
-    print(total_preds.shape)
-    print(total_targets.shape)
 
     # Train AUC / ACC
     auc, acc = get_metric(total_targets, total_preds)
