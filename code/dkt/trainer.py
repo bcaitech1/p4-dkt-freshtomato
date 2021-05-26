@@ -40,7 +40,6 @@ def run(args, train_data, valid_data):
         ### VALID
         auc, acc, _, _ = validate(valid_loader, model, args)
 
-        ### TODO: model save or early stopping
         try:
             fold_str = f"fold{args.fold}-"
         except:
@@ -55,6 +54,8 @@ def run(args, train_data, valid_data):
                 f"{fold_str}valid_acc": acc,
             }
         )
+        
+        ### TODO: model save or early stopping
         if auc > best_auc:
             best_epoch_auc = epoch  # best_auc가 출현한 epoch
             best_auc = auc
@@ -76,6 +77,7 @@ def run(args, train_data, valid_data):
                     f"EarlyStopping counter: {early_stopping_counter} out of {args.patience}"
                 )
                 break
+            
         # best accuracy 저장
         if acc > best_acc:
             best_acc = acc
@@ -109,7 +111,7 @@ def train(train_loader, model, optimizer, args):
     for step, batch in enumerate(train_loader):
         input = process_batch(batch, args)
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         loss = compute_loss(preds, targets)
         update_params(loss, model, optimizer, args)
@@ -131,9 +133,13 @@ def train(train_loader, model, optimizer, args):
         total_preds.append(preds)
         total_targets.append(targets)
         losses.append(loss)
-
+    
+    print(len(total_preds))
+    print(len(total_targets))
     total_preds = np.concatenate(total_preds)
     total_targets = np.concatenate(total_targets)
+    print(total_preds.shape)
+    print(total_targets.shape)
 
     # Train AUC / ACC
     auc, acc = get_metric(total_targets, total_preds)
@@ -151,7 +157,7 @@ def validate(valid_loader, model, args):
         input = process_batch(batch, args)
 
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         # predictions
         preds = preds[:, -1]
@@ -254,8 +260,7 @@ def process_batch(batch, args):
     interaction = interaction.roll(shifts=1, dims=1)
     interaction[:, 0] = 0  # set padding index to the first sequence
     interaction = (interaction * mask).to(torch.int64)
-    # print(interaction)
-    # exit()
+
     #  test_id, question_id, tag
     test = ((test + 1) * mask).to(torch.int64)
     question = ((question + 1) * mask).to(torch.int64)
@@ -272,7 +277,7 @@ def process_batch(batch, args):
 
     interaction = interaction.to(args.device)
 
-    return (test, question, tag, correct, mask, interaction)
+    return (test, question, tag, mask, interaction, correct)
 
 
 # loss계산하고 parameter update!
