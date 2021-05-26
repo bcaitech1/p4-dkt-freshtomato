@@ -15,9 +15,10 @@
 ### **Train Phase**
 ```python
 >>> cd code
->>> python train.py --wandb_run_name [RUN_NAME] --model [MODEL]
+>>> python train.py --wandb_project_name [PROJECT_NAME] --wandb_run_name [RUN_NAME] --model [MODEL]
+>>> python train_kfold.py --wandb_project_name [PROJECT_NAME] --wandb_run_name [RUN_NAME] --model [MODEL] --kfold 5
 ```
-  
+
 ### **Inference Phase**
 ```python
 >>> cd code
