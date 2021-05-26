@@ -85,22 +85,15 @@ def run(args, train_data, valid_data):
 
     # best epoch과 best score를 저장해 놓은 best_dict
     best_dict = {
-                "best_epoch(auc)": best_epoch_auc,
-                "best_valid_auc": best_auc,
-                }
+        "best_epoch(auc)": best_epoch_auc,
+        "best_valid_auc": best_auc,
+        "best_epoch(acc)": best_epoch_acc,
+        "best_valid_acc": best_acc,
+    }
 
     # Save best_dict
-    with open(f'{args.model_dir}/best_dict.json','w') as fw:
+    with open(f"{args.model_dir}/best_dict.json", "w") as fw:
         json.dump(best_dict, fw, indent=4)
-
-    # kfold 학습이 아니면 best_valid_auc : 0.72345와 같이 wandb에 저장.
-    if args.kfold is None:
-        wandb.log({str(key):str(val) for key,val in best_dict})
-
-    # kfold 수행 중이면, 1fold_best_valid_auc : 0.72345와 같이 fold별로 이름을 다르게 wandb에 저장.
-    else:
-        prefix_key = f"{args.fold_counter}fold_"
-        wandb.log({prefix_key+str(key):str(val) for key,val in best_dict.items()})
 
 
 def train(train_loader, model, optimizer, args):
@@ -205,7 +198,9 @@ def inference(args, test_data):
         total_preds += list(preds)
 
     try:
-        write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv")
+        write_path = os.path.join(
+            args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv"
+        )
     except:
         write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
 
@@ -229,10 +224,12 @@ def get_model(args):
         model = LSTMATTN(args)
     if args.model == "bert":
         model = Bert(args)
-    
+
     if not model:
-        raise RuntimeError(f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert")
-    
+        raise RuntimeError(
+            f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert"
+        )
+
     model.to(args.device)
 
     return model
