@@ -134,6 +134,12 @@ code/wandb/**
 
 # result models
 code/models/**
+models/**
+
+# output
+code/output/**
+output/**
+
 
 # hidden files & folders
 .*
