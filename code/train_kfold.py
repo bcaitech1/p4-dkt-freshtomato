@@ -84,7 +84,7 @@ def main(args):
 
     ### 여기가 Score 출력하는 부분 ###
     print("=" * 30)
-    for key, value in final_score_dict:
+    for key, value in final_score_dict.items():
         print(f"{key} : {value}")
     print("=" * 30)
 
