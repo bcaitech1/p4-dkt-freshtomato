@@ -133,13 +133,10 @@ wandb/**
 code/wandb/**
 
 # result models
-code/models/**
-models/**
+**/models/**
 
 # output
-code/output/**
-output/**
-
+**/output/**
 
 # hidden files & folders
 .*
@@ -147,3 +144,7 @@ output/**
 
 # datset
 input/
+
+# MJH
+EDA_MJH.ipynb
+README_MJH.md

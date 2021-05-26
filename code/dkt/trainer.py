@@ -1,7 +1,8 @@
 import os
 import torch
 import numpy as np
-
+import pickle
+import json
 
 from .dataloader import get_loaders
 from .optimizer import get_optimizer
@@ -27,6 +28,7 @@ def run(args, train_data, valid_data):
     scheduler = get_scheduler(optimizer, args)
 
     best_auc = -1
+    best_acc = -1
     early_stopping_counter = 0
     for epoch in range(args.n_epochs):
 
@@ -50,6 +52,7 @@ def run(args, train_data, valid_data):
             }
         )
         if auc > best_auc:
+            best_epoch_auc = epoch  # best_auc가 출현한 epoch
             best_auc = auc
             # torch.nn.DataParallel로 감싸진 경우 원래의 model을 가져옵니다.
             model_to_save = model.module if hasattr(model, "module") else model
@@ -69,12 +72,28 @@ def run(args, train_data, valid_data):
                     f"EarlyStopping counter: {early_stopping_counter} out of {args.patience}"
                 )
                 break
+        # best accuracy 저장
+        if acc > best_acc:
+            best_acc = acc
+            best_epoch_acc = epoch
 
         # scheduler
         if args.scheduler == "plateau":
             scheduler.step(best_auc)
         else:
             scheduler.step()
+
+    # best epoch과 best score를 저장해 놓은 best_dict
+    best_dict = {
+        "best_epoch(auc)": best_epoch_auc,
+        "best_valid_auc": best_auc,
+        "best_epoch(acc)": best_epoch_acc,
+        "best_valid_acc": best_acc,
+    }
+
+    # Save best_dict
+    with open(f"{args.model_dir}/best_dict.json", "w") as fw:
+        json.dump(best_dict, fw, indent=4)
 
 
 def train(train_loader, model, optimizer, args):
@@ -179,7 +198,9 @@ def inference(args, test_data):
         total_preds += list(preds)
 
     try:
-        write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv")
+        write_path = os.path.join(
+            args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv"
+        )
     except:
         write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
 
@@ -203,10 +224,12 @@ def get_model(args):
         model = LSTMATTN(args)
     if args.model == "bert":
         model = Bert(args)
-    
+
     if not model:
-        raise RuntimeError(f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert")
-    
+        raise RuntimeError(
+            f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert"
+        )
+
     model.to(args.device)
 
     return model
