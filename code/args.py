@@ -24,14 +24,14 @@ def parse_args(mode="train"):
     )
 
     parser.add_argument(
-        "--model_dir", default="models/", type=str, help="model directory"
+        "--model_dir", default="../models", type=str, help="model directory"
     )
     parser.add_argument(
         "--model_name", default="model.pt", type=str, help="model file name"
     )
 
     parser.add_argument(
-        "--output_dir", default="output/", type=str, help="output directory"
+        "--output_dir", default="../output", type=str, help="output directory"
     )
     parser.add_argument(
         "--test_file_name", default="test_data.csv", type=str, help="test file name"
