@@ -41,14 +41,18 @@ def run(args, train_data, valid_data):
         auc, acc, _, _ = validate(valid_loader, model, args)
 
         ### TODO: model save or early stopping
+        try:
+            fold_str = f"fold{args.fold}-"
+        except:
+            fold_str = ""
         wandb.log(
             {
                 "epoch": epoch,
-                "train_loss": train_loss,
-                "train_auc": train_auc,
-                "train_acc": train_acc,
-                "valid_auc": auc,
-                "valid_acc": acc,
+                f"{fold_str}train_loss": train_loss,
+                f"{fold_str}train_auc": train_auc,
+                f"{fold_str}train_acc": train_acc,
+                f"{fold_str}valid_auc": auc,
+                f"{fold_str}valid_acc": acc,
             }
         )
         if auc > best_auc:
