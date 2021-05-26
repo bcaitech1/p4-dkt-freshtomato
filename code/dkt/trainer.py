@@ -1,7 +1,8 @@
 import os
 import torch
 import numpy as np
-
+import pickle
+import json
 
 from .dataloader import get_loaders
 from .optimizer import get_optimizer
@@ -27,6 +28,7 @@ def run(args, train_data, valid_data):
     scheduler = get_scheduler(optimizer, args)
 
     best_auc = -1
+    best_acc = -1
     early_stopping_counter = 0
     for epoch in range(args.n_epochs):
 
@@ -38,18 +40,24 @@ def run(args, train_data, valid_data):
         ### VALID
         auc, acc, _, _ = validate(valid_loader, model, args)
 
-        ### TODO: model save or early stopping
+        try:
+            fold_str = f"fold{args.fold}-"
+        except:
+            fold_str = ""
         wandb.log(
             {
                 "epoch": epoch,
-                "train_loss": train_loss,
-                "train_auc": train_auc,
-                "train_acc": train_acc,
-                "valid_auc": auc,
-                "valid_acc": acc,
+                f"{fold_str}train_loss": train_loss,
+                f"{fold_str}train_auc": train_auc,
+                f"{fold_str}train_acc": train_acc,
+                f"{fold_str}valid_auc": auc,
+                f"{fold_str}valid_acc": acc,
             }
         )
+        
+        ### TODO: model save or early stopping
         if auc > best_auc:
+            best_epoch_auc = epoch  # best_auc가 출현한 epoch
             best_auc = auc
             # torch.nn.DataParallel로 감싸진 경우 원래의 model을 가져옵니다.
             model_to_save = model.module if hasattr(model, "module") else model
@@ -69,12 +77,29 @@ def run(args, train_data, valid_data):
                     f"EarlyStopping counter: {early_stopping_counter} out of {args.patience}"
                 )
                 break
+            
+        # best accuracy 저장
+        if acc > best_acc:
+            best_acc = acc
+            best_epoch_acc = epoch
 
         # scheduler
         if args.scheduler == "plateau":
             scheduler.step(best_auc)
         else:
             scheduler.step()
+
+    # best epoch과 best score를 저장해 놓은 best_dict
+    best_dict = {
+        "best_epoch(auc)": best_epoch_auc,
+        "best_valid_auc": best_auc,
+        "best_epoch(acc)": best_epoch_acc,
+        "best_valid_acc": best_acc,
+    }
+
+    # Save best_dict
+    with open(f"{args.model_dir}/best_dict.json", "w") as fw:
+        json.dump(best_dict, fw, indent=4)
 
 
 def train(train_loader, model, optimizer, args):
@@ -86,7 +111,7 @@ def train(train_loader, model, optimizer, args):
     for step, batch in enumerate(train_loader):
         input = process_batch(batch, args)
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         loss = compute_loss(preds, targets)
         update_params(loss, model, optimizer, args)
@@ -108,7 +133,7 @@ def train(train_loader, model, optimizer, args):
         total_preds.append(preds)
         total_targets.append(targets)
         losses.append(loss)
-
+    
     total_preds = np.concatenate(total_preds)
     total_targets = np.concatenate(total_targets)
 
@@ -128,7 +153,7 @@ def validate(valid_loader, model, args):
         input = process_batch(batch, args)
 
         preds = model(input)
-        targets = input[3]  # correct
+        targets = input[-1]  # correct
 
         # predictions
         preds = preds[:, -1]
@@ -178,7 +203,13 @@ def inference(args, test_data):
 
         total_preds += list(preds)
 
-    write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
+    try:
+        write_path = os.path.join(
+            args.output_dir, f"{args.wandb_run_name}-output_{args.fold}.csv"
+        )
+    except:
+        write_path = os.path.join(args.output_dir, f"{args.wandb_run_name}-output.csv")
+
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     with open(write_path, "w", encoding="utf8") as w:
@@ -199,10 +230,12 @@ def get_model(args):
         model = LSTMATTN(args)
     if args.model == "bert":
         model = Bert(args)
-    
+
     if not model:
-        raise RuntimeError(f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert")
-    
+        raise RuntimeError(
+            f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert"
+        )
+
     model.to(args.device)
 
     return model
@@ -222,17 +255,11 @@ def process_batch(batch, args):
     interaction = interaction.roll(shifts=1, dims=1)
     interaction[:, 0] = 0  # set padding index to the first sequence
     interaction = (interaction * mask).to(torch.int64)
-    # print(interaction)
-    # exit()
+
     #  test_id, question_id, tag
     test = ((test + 1) * mask).to(torch.int64)
     question = ((question + 1) * mask).to(torch.int64)
     tag = ((tag + 1) * mask).to(torch.int64)
-
-    # gather index
-    # 마지막 sequence만 사용하기 위한 index
-    gather_index = torch.tensor(np.count_nonzero(mask, axis=1))
-    gather_index = gather_index.view(-1, 1) - 1
 
     # device memory로 이동
 
@@ -244,9 +271,8 @@ def process_batch(batch, args):
     mask = mask.to(args.device)
 
     interaction = interaction.to(args.device)
-    gather_index = gather_index.to(args.device)
 
-    return (test, question, tag, correct, mask, interaction, gather_index)
+    return (test, question, tag, mask, interaction, correct)
 
 
 # loss계산하고 parameter update!

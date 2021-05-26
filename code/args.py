@@ -24,14 +24,14 @@ def parse_args(mode="train"):
     )
 
     parser.add_argument(
-        "--model_dir", default="models/", type=str, help="model directory"
+        "--model_dir", default="../models", type=str, help="model directory"
     )
     parser.add_argument(
         "--model_name", default="model.pt", type=str, help="model file name"
     )
 
     parser.add_argument(
-        "--output_dir", default="output/", type=str, help="output directory"
+        "--output_dir", default="../output", type=str, help="output directory"
     )
     parser.add_argument(
         "--test_file_name", default="test_data.csv", type=str, help="test file name"
@@ -56,6 +56,7 @@ def parse_args(mode="train"):
     parser.add_argument("--lr", default=0.0001, type=float, help="learning rate")
     parser.add_argument("--clip_grad", default=10, type=int, help="clip grad")
     parser.add_argument("--patience", default=5, type=int, help="for early stopping")
+    parser.add_argument("--kfold", default=None, type=int, help="K-fold")
 
     parser.add_argument(
         "--log_steps", default=50, type=int, help="print log per n steps"
@@ -64,6 +65,9 @@ def parse_args(mode="train"):
     # wandb
     parser.add_argument(
         "--wandb_run_name", required=True, type=str, help="wandb run name"
+    )
+    parser.add_argument(
+        "--wandb_project_name", required=True, type=str, help="wandb project name"
     )
 
     ### 중요 ###

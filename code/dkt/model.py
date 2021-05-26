@@ -56,7 +56,7 @@ class LSTM(nn.Module):
 
     def forward(self, input):
 
-        test, question, tag, _, mask, interaction, _ = input
+        test, question, tag, mask, interaction, _ = input
 
         batch_size = interaction.size(0)
 
@@ -149,7 +149,7 @@ class LSTMATTN(nn.Module):
 
     def forward(self, input):
 
-        test, question, tag, _, mask, interaction, _ = input
+        test, question, tag, mask, interaction, _ = input
 
         batch_size = interaction.size(0)
 
@@ -228,7 +228,7 @@ class Bert(nn.Module):
 
 
     def forward(self, input):
-        test, question, tag, _, mask, interaction, _ = input
+        test, question, tag, mask, interaction, _ = input
         batch_size = interaction.size(0)
 
         # 신나는 embedding
