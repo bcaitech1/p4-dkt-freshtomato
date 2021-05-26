@@ -72,13 +72,19 @@ def main(args):
         [val for key, val in final_score_dict.items() if key.endswith("ACC")]
     )
 
-    print("Saving Final Score Dict...")  # AUC & ACC를 저장한 dictionary json 형태로 저장
+    # AUC & ACC를 저장한 dictionary json 형태로 저장
+    print("Saving Final Score Dict...")
+    ## json파일 보기 좋게 저장 ##
+    final_score_dict = {
+        key: value
+        for key, value in sorted(final_score_dict.items(), key=lambda x: x[0][-3:])
+    }
     with open(f"{model_dir}/final_score_dict.json", "w") as fp:
         json.dump(final_score_dict, fp, indent=4)
 
     ### 여기가 Score 출력하는 부분 ###
     print("=" * 30)
-    for key, value in sorted(final_score_dict.items(), key=lambda x: x[0][-3:]):
+    for key, value in final_score_dict:
         print(f"{key} : {value}")
     print("=" * 30)
 
