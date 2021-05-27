@@ -25,7 +25,7 @@ class Preprocess:
     def get_user_stratified_key(self):
         return self.user_stratified_key
 
-    def split_data(self, data, ratio=0.8, shuffle=True):
+    def split_data(self, data, ratio=0.9, shuffle=True):
         """
         split data into two parts with a given ratio.
         """
