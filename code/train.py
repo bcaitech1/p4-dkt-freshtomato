@@ -8,19 +8,22 @@ import wandb
 
 
 def main(args):
-    wandb.login()
-
     set_seed(args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     args.device = device
 
     preprocess = Preprocess(args)
+
+    print("loading train data...")
     preprocess.load_train_data(args.file_name)
+
+    print("get preprocessed data...")
     train_data = preprocess.get_train_data()
 
     train_data, valid_data = preprocess.split_data(train_data)
 
-    wandb.init(project="freshtomato", config=vars(args))
+    wandb.login()
+    wandb.init(project=args.wandb_project_name, config=vars(args))
 
     if args.wandb_run_name:
         wandb.run.name = args.wandb_run_name

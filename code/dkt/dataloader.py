@@ -14,6 +14,7 @@ class Preprocess:
         self.args = args
         self.train_data = None
         self.test_data = None
+        self.user_stratified_key = None
 
     def get_train_data(self):
         return self.train_data
@@ -21,10 +22,15 @@ class Preprocess:
     def get_test_data(self):
         return self.test_data
 
-    def split_data(self, data, ratio=0.7, shuffle=True, seed=0):
+    def get_user_stratified_key(self):
+        return self.user_stratified_key
+
+    def split_data(self, data, ratio=0.9, shuffle=True):
         """
         split data into two parts with a given ratio.
         """
+        seed = self.args.seed
+
         if shuffle:
             random.seed(seed)  # fix to default seed 0
             random.shuffle(data)
@@ -34,6 +40,7 @@ class Preprocess:
         data_2 = data[size:]
 
         return data_1, data_2
+    
 
     def __save_labels(self, encoder, name):
         le_path = os.path.join(self.args.asset_dir, name + "_classes.npy")
@@ -46,7 +53,6 @@ class Preprocess:
             os.makedirs(self.args.asset_dir)
 
         for col in cate_cols:
-
             le = LabelEncoder()
             if is_train:
                 # For UNKNOWN class
@@ -78,9 +84,43 @@ class Preprocess:
         # TODO
         return df
 
+    def __make_stratified_key(self, df):
+        def assessmentItemID2item(x):
+            return x[-3:]
+        def assessmentItemID2test(x):
+            return x[1:-3]
+        def test2test_pre(x):
+            return x[:3]    
+        def test2test_post(x):
+            return x[3:]
+
+        stratified = df.copy()
+        
+        stratified['problem_number'] = stratified.assessmentItemID.map(assessmentItemID2item)
+        stratified['test'] = stratified.assessmentItemID.map(assessmentItemID2test)
+        stratified['test_pre'] = stratified.test.map(test2test_pre)
+        stratified['test_post'] = stratified.test.map(test2test_post)
+        stratified.drop('test', axis=1, inplace=True)
+
+        user_test_group = stratified.groupby("userID")
+
+        result = []
+
+        for key, group in user_test_group:
+            test_pres = np.sort(group.test_pre.unique())
+            key = ''
+            for test_pre in test_pres:
+                key += test_pre[1]
+
+            result.append(key)
+        
+        self.user_stratified_key = result
+
+
     def load_data_from_file(self, file_name, is_train=True):
         csv_file_path = os.path.join(self.args.data_dir, file_name)
         df = pd.read_csv(csv_file_path)  # , nrows=100000)
+        self.__make_stratified_key(df)
         df = self.__feature_engineering(df)
         df = self.__preprocessing(df, is_train)
 
@@ -130,8 +170,7 @@ class DKTDataset(torch.utils.data.Dataset):
 
         # 각 data의 sequence length
         seq_len = len(row[0])
-
-        test, question, tag, correct = row[0], row[1], row[2], row[3]
+        test, question, tag, correct = row
 
         cate_cols = [test, question, tag, correct]
 
