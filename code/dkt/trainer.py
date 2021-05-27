@@ -244,7 +244,7 @@ def get_model(args):
 # 배치 전처리
 def process_batch(batch, args):
 
-    test, question, tag, correct, mask = batch
+    test, question, tag, rate, correct, mask = batch
 
     # change to float
     mask = mask.type(torch.FloatTensor)
@@ -261,6 +261,7 @@ def process_batch(batch, args):
     test = ((test + 1) * mask).to(torch.int64)
     question = ((question + 1) * mask).to(torch.int64)
     tag = ((tag + 1) * mask).to(torch.int64)
+    rate = ((rate + 1) * mask).to(torch.int64)
 
     # device memory로 이동
 
@@ -268,6 +269,7 @@ def process_batch(batch, args):
     question = question.to(args.device)
 
     tag = tag.to(args.device)
+    rate = rate.to(args.device)
     correct = correct.to(args.device)
     mask = mask.to(args.device)
 
