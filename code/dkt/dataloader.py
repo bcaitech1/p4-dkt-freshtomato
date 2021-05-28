@@ -218,7 +218,7 @@ def collate(batch):
 
 def get_loaders(args, train, valid):
 
-    pin_memory = False
+    pin_memory = True
     train_loader, valid_loader = None, None
 
     if train is not None:

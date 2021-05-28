@@ -254,11 +254,12 @@ def process_batch(batch, args):
     #    saint의 경우 decoder에 들어가는 input이다
     interaction = correct + 1  # 패딩을 위해 correct값에 1을 더해준다.
     interaction = interaction.roll(shifts=1, dims=1)
-    interaction[:, 0] = 0  # set padding index to the first sequence
-    interaction = (interaction * mask).to(torch.int64)
+    interaction_mask = mask.roll(shift=1, dims=1)
+    interaction_mask[:, 0] = 0
+    interaction = (interaction * interaction_mask)
 
     cate_batch = [((b + 1) * mask).to(torch.int64).to(args.device) for b in batch[:args.n_cates-1]] 
-    cate_batch.append(interaction.to(args.device))
+    cate_batch.append(interaction.to(torch.int64).to(args.device))
 
     cons_batch = [((b + 1) * mask).to(torch.float32).to(args.device) for b in batch[args.n_cates-1:-2]]
 
