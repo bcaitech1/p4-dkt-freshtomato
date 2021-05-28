@@ -74,12 +74,13 @@ class LSTM(nn.Module):
         continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
         x_cons = self.continuous_layers(continuous)
 
+
         embed = torch.cat([x_cates, x_cons], -1)
         X = self.comb_proj(embed)
-
+        
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
-        out = out.contiguous().view(batch_size, -1, self.hidden_dim)
+        out = out.contiguous().view(batch_size, -1, self.hidden_dim) # 이거는 다시 왜 할까?
 
         out = self.fc(out)
         preds = self.activation(out).view(batch_size, -1)
