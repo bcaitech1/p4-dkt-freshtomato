@@ -119,35 +119,34 @@ class Preprocess:
 
     def load_data_from_file(self, file_name, is_train=True):
         csv_file_path = os.path.join(self.args.data_dir, file_name)
-        df = pd.read_csv(csv_file_path)  # , nrows=100000)
-        self.__make_stratified_key(df)
+
+        df = pd.read_csv(csv_file_path)
+        # self.__make_stratified_key(df)
         df = self.__feature_engineering(df)
         df = self.__preprocessing(df, is_train)
 
-        # 추후 feature를 embedding할 시에 embedding_layer의 input 크기를 결정할때 사용
-
-        self.args.n_questions = len(
-            np.load(os.path.join(self.args.asset_dir, "assessmentItemID_classes.npy"))
-        )
-        self.args.n_test = len(
-            np.load(os.path.join(self.args.asset_dir, "testId_classes.npy"))
-        )
-        self.args.n_tag = len(
-            np.load(os.path.join(self.args.asset_dir, "KnowledgeTag_classes.npy"))
-        )
-
         df = df.sort_values(by=["userID", "Timestamp"], axis=0)
-        columns = ["userID", "assessmentItemID", "testId", "answerCode", "KnowledgeTag"]
+        # =============================== !!!!여기만 주의하자!!!! ===============================
+        columns = ["userID", "testId", "assessmentItemID", "KnowledgeTag", 
+                   "correctRate", "correctAnswer", "totalAnswer", "userAcc", "test_mean", "tag_mean", "answerCode"]
+        args.n_cates = 3
+        args.n_cons = 6
+        # ========================================================================================
+        args.cate_embs = []
+        for c in columns[1: args.n_cates+1]:
+            args.cate_embs.append(len(np.load(os.path.join(self.args.asset_dir, f"{c}_classes.npy"))))
+        
+        args.n_cates += 1
+        args.cate_embs.append(3)
+
+        for col in df.columns:
+            df[col].fillna(0, inplace=True)
+        
         group = (
             df[columns]
             .groupby("userID")
             .apply(
-                lambda r: (
-                    r["testId"].values,
-                    r["assessmentItemID"].values,
-                    r["KnowledgeTag"].values,
-                    r["answerCode"].values,
-                )
+                lambda r: tuple([r[c].values for c in columns[1:]])
             )
         )
 

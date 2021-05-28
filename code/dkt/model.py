@@ -16,6 +16,7 @@ except:
 
 
 class LSTM(nn.Module):
+
     def __init__(self, args):
         super(LSTM, self).__init__()
         self.args = args
@@ -24,59 +25,56 @@ class LSTM(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # Embedding
-        # interaction은 현재 correct로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim // 3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim // 3)
-        self.embedding_question = nn.Embedding(
-            self.args.n_questions + 1, self.hidden_dim // 3
-        )
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim // 3)
+        # categorical features 
+        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
+        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim // 3) * 4, self.hidden_dim)
+        # continuous features
+        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
 
-        self.lstm = nn.LSTM(
-            self.hidden_dim, self.hidden_dim, self.n_layers, batch_first=True
-        )
+        # categorical and continuous combination projection
+        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
 
+        self.lstm = nn.LSTM(self.hidden_dim,
+                            self.hidden_dim,
+                            self.n_layers,
+                            batch_first=True)
+        
         # Fully connected layer
         self.fc = nn.Linear(self.hidden_dim, 1)
 
         self.activation = nn.Sigmoid()
 
     def init_hidden(self, batch_size):
-        h = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        h = torch.zeros(
+            self.n_layers,
+            batch_size,
+            self.hidden_dim)
         h = h.to(self.device)
 
-        c = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        c = torch.zeros(
+            self.n_layers,
+            batch_size,
+            self.hidden_dim)
         c = c.to(self.device)
 
         return (h, c)
 
     def forward(self, input):
 
-        test, question, tag, mask, interaction, _ = input
+        categorical, continuous, _, _ = input
+        batch_size = categorical[0].size(0)
 
-        batch_size = interaction.size(0)
+        # categorical
+        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
+        categorical = torch.cat(categorical, -1)
+        x_cates = self.categorical_comb(categorical)
+        
+        # continuous
+        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
+        x_cons = self.continuous_layers(continuous)
 
-        # Embedding
-
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
-
-        embed = torch.cat(
-            [
-                embed_interaction,
-                embed_test,
-                embed_question,
-                embed_tag,
-            ],
-            2,
-        )
-
+        embed = torch.cat([x_cates, x_cons], -1)
         X = self.comb_proj(embed)
 
         hidden = self.init_hidden(batch_size)
@@ -101,15 +99,15 @@ class LSTMATTN(nn.Module):
         self.n_heads = self.args.n_heads
         self.drop_out = self.args.drop_out
 
-        # Embedding 
-        # interaction은 현재 correct로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim//3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim//3)
-        self.embedding_question = nn.Embedding(self.args.n_questions + 1, self.hidden_dim//3)
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim//3)
+        ## categorical features 
+        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
+        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim//3)*4, self.hidden_dim)
+        # continuous features
+        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
+
+        # categorical and continuous combination projection
+        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
 
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
@@ -149,23 +147,19 @@ class LSTMATTN(nn.Module):
 
     def forward(self, input):
 
-        test, question, tag, mask, interaction, _ = input
+        categorical, continuous, _, _ = input
+        batch_size = categorical[0].size(0)
 
-        batch_size = interaction.size(0)
-
-        # Embedding
-
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
+        # categorical
+        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
+        categorical = torch.cat(categorical, -1)
+        x_cates = self.categorical_comb(categorical)
         
+        # continuous
+        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
+        x_cons = self.continuous_layers(continuous)
 
-        embed = torch.cat([embed_interaction,
-                           embed_test,
-                           embed_question,
-                           embed_tag,], 2)
-
+        embed = torch.cat([x_cates, x_cons], -1)
         X = self.comb_proj(embed)
 
         hidden = self.init_hidden(batch_size)
@@ -198,15 +192,15 @@ class Bert(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # Embedding 
-        # interaction은 현재 correct으로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim//3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim//3)
-        self.embedding_question = nn.Embedding(self.args.n_questions + 1, self.hidden_dim//3)
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim//3)
+        # categorical features 
+        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
+        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim//3)*4, self.hidden_dim)
+        # continuous features
+        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
+
+        # categorical and continuous combination projection
+        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
 
         # Bert config
         self.config = BertConfig( 
@@ -228,23 +222,19 @@ class Bert(nn.Module):
 
 
     def forward(self, input):
-        test, question, tag, mask, interaction, _ = input
-        batch_size = interaction.size(0)
+        categorical, continuous, _, _ = input
+        batch_size = categorical[0].size(0)
 
-        # 신나는 embedding
+        # categorical
+        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
+        categorical = torch.cat(categorical, -1)
+        x_cates = self.categorical_comb(categorical)
         
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
+        # continuous
+        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
+        x_cons = self.continuous_layers(continuous)
 
-        embed = torch.cat([embed_interaction,
-        
-                           embed_test,
-                           embed_question,
-        
-                           embed_tag,], 2)
-
+        embed = torch.cat([x_cates, x_cons], -1)
         X = self.comb_proj(embed)
 
         # Bert
