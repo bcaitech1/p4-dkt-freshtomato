@@ -244,7 +244,7 @@ def get_model(args):
 # 배치 전처리
 def process_batch(batch, args):
 
-    test, question, tag, rate, correct, mask = batch
+    correct, mask = batch[-2], batch[-1]
 
     # change to float
     mask = mask.type(torch.FloatTensor)
@@ -254,28 +254,20 @@ def process_batch(batch, args):
     #    saint의 경우 decoder에 들어가는 input이다
     interaction = correct + 1  # 패딩을 위해 correct값에 1을 더해준다.
     interaction = interaction.roll(shifts=1, dims=1)
-    interaction[:, 0] = 0  # set padding index to the first sequence
-    interaction = (interaction * mask).to(torch.int64)
+    interaction_mask = mask.roll(shift=1, dims=1)
+    interaction_mask[:, 0] = 0
+    interaction = (interaction * interaction_mask)
 
-    #  test_id, question_id, tag
-    test = ((test + 1) * mask).to(torch.int64)
-    question = ((question + 1) * mask).to(torch.int64)
-    tag = ((tag + 1) * mask).to(torch.int64)
-    rate = ((rate + 1) * mask).to(torch.int64)
+    cate_batch = [((b + 1) * mask).to(torch.int64).to(args.device) for b in batch[:args.n_cates-1]] 
+    cate_batch.append(interaction.to(torch.int64).to(args.device))
 
-    # device memory로 이동
+    cons_batch = [((b + 1) * mask).to(torch.float32).to(args.device) for b in batch[args.n_cates-1:-2]]
 
-    test = test.to(args.device)
-    question = question.to(args.device)
+    processed_batch = [cate_batch, cons_batch]
+    processed_batch.append(mask.to(args.device))
+    processed_batch.append(correct.to(args.device))
 
-    tag = tag.to(args.device)
-    rate = rate.to(args.device)
-    correct = correct.to(args.device)
-    mask = mask.to(args.device)
-
-    interaction = interaction.to(args.device)
-
-    return (test, question, tag, mask, interaction, correct)
+    return tuple(processed_batch)
 
 
 # loss계산하고 parameter update!
