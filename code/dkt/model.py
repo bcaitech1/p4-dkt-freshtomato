@@ -25,16 +25,26 @@ class LSTM(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # categorical features 
-        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
-        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
+
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         # continuous features
-        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
-        # categorical and continuous combination projection
-        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
-
+        # lstm layer
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
                             self.n_layers,
@@ -62,26 +72,27 @@ class LSTM(nn.Module):
 
     def forward(self, input):
 
-        categorical, continuous, _, _ = input
+        categorical, continuous, _, __ = input
         batch_size = categorical[0].size(0)
 
         # categorical
-        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
-        categorical = torch.cat(categorical, -1)
-        x_cates = self.categorical_comb(categorical)
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, 2)
+        x_cat = self.cate_comb_proj(x_cat)
         
         # continuous
-        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
-        x_cons = self.continuous_layers(continuous)
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
-        embed = torch.cat([x_cates, x_cons], -1)
-        X = self.comb_proj(embed)
-        
+        # pass lstm layer
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
-        out = out.contiguous().view(batch_size, -1, self.hidden_dim) # 이거는 다시 왜 할까?
+        out = out.contiguous().view(batch_size, -1, self.hidden_dim)
 
+        # pass last block hidden dimension to fully connected layer
         out = self.fc(out)
         preds = self.activation(out).view(batch_size, -1)
 
@@ -100,15 +111,24 @@ class LSTMATTN(nn.Module):
         self.n_heads = self.args.n_heads
         self.drop_out = self.args.drop_out
 
-        ## categorical features 
-        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
-        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
+
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         # continuous features
-        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
-
-        # categorical and continuous combination projection
-        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
@@ -148,21 +168,22 @@ class LSTMATTN(nn.Module):
 
     def forward(self, input):
 
-        categorical, continuous, _, _ = input
+        categorical, continuous, mask, __ = input
         batch_size = categorical[0].size(0)
 
         # categorical
-        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
-        categorical = torch.cat(categorical, -1)
-        x_cates = self.categorical_comb(categorical)
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, -1)
+        x_cat = self.cate_comb_proj(x_cat)
         
         # continuous
-        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
-        x_cons = self.continuous_layers(continuous)
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
-        embed = torch.cat([x_cates, x_cons], -1)
-        X = self.comb_proj(embed)
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
+        # pass lstm layer
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
         out = out.contiguous().view(batch_size, -1, self.hidden_dim)
@@ -193,15 +214,24 @@ class Bert(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # categorical features 
-        self.categorical_layers = nn.ModuleList([nn.Embedding(x, self.hidden_dim//3) for x in self.args.cate_embs])
-        self.categorical_comb = nn.Linear((self.hidden_dim//3)*args.n_cates, self.hidden_dim//3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
+
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         # continuous features
-        self.continuous_layers = nn.Linear(args.n_cons, self.hidden_dim//3)
-
-        # categorical and continuous combination projection
-        self.comb_proj = nn.Linear(self.hidden_dim//3*2, self.hidden_dim)
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         # Bert config
         self.config = BertConfig( 
@@ -217,26 +247,26 @@ class Bert(nn.Module):
         self.encoder = BertModel(self.config)  
 
         # Fully connected layer
-        self.fc = nn.Linear(self.args.hidden_dim, 1)
+        self.fc = nn.Linear(self.hidden_dim, 1)
        
         self.activation = nn.Sigmoid()
 
 
     def forward(self, input):
-        categorical, continuous, _, _ = input
+        categorical, continuous, mask, __ = input
         batch_size = categorical[0].size(0)
 
         # categorical
-        categorical = [cates_layer(categorical[i]) for i, cates_layer in enumerate(self.categorical_layers)]
-        categorical = torch.cat(categorical, -1)
-        x_cates = self.categorical_comb(categorical)
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, -1)
+        x_cat = self.cate_comb_proj(x_cat)
         
         # continuous
-        continuous = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32).to(args.device)
-        x_cons = self.continuous_layers(continuous)
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
-        embed = torch.cat([x_cates, x_cons], -1)
-        X = self.comb_proj(embed)
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
         # Bert
         encoded_layers = self.encoder(inputs_embeds=X, attention_mask=mask)

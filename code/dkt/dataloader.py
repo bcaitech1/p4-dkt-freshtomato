@@ -7,6 +7,9 @@ import random
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import torch
+from torch.nn.utils.rnn import pad_sequence
+from collections import defaultdict
+import pickle
 
 
 class Preprocess:
@@ -40,14 +43,76 @@ class Preprocess:
         data_2 = data[size:]
 
         return data_1, data_2
-    
 
-    def __save_labels(self, encoder, name):
-        le_path = os.path.join(self.args.asset_dir, name + "_classes.npy")
-        np.save(le_path, encoder.classes_)
+    def __make_stratified_key(self, df):
+        # TODO
+        pass
 
-    def __preprocessing(self, df, is_train=True):
-        cate_cols = ["assessmentItemID", "testId", "KnowledgeTag", "correctRate"]
+    def __feature_engineering(self, df):
+        # TODO
+        df = df.sort_values(by=["userID", "Timestamp"], axis=0)
+
+        # (1) 풀고 있는 assessmentItemID 의 정답률을 나타내는 feature
+
+        # -> train dataset에서 구한 정답률을 미리 저장하는 코드입니다.
+        # assessmentItemID_mean_sum = df.groupby(['assessmentItemID'])['answerCode'].agg(['mean', 'sum']).to_dict()
+        # le_path = os.path.join(self.args.asset_dir, "assessmentItemID_mean_sum.pk")
+        # with open(le_path, 'wb') as f:
+        #     pickle.dump(assessmentItemID_mean_sum, f)
+
+        # -> 저장된 정답률을 가져와서 mapping하는 코드입니다.
+        le_path = os.path.join(self.args.asset_dir, "assessmentItemID_mean_sum.pk")
+        with open(le_path, 'rb') as f:
+            assessmentItemID_mean_sum = pickle.load(f)
+        df["assessmentItemID_mean"] = df.assessmentItemID.map(assessmentItemID_mean_sum['mean'])
+
+
+        # (2) 해당 시험지를 몇번째 푸는 것인지 나타내는 feature
+        # test_prob_count = defaultdict(set)
+        # for test_id, assessmentItemID in zip(df["testId"], df["assessmentItemID"]):
+        #     test_prob_count[test_id].add(assessmentItemID[-3:])
+        # test_prob_count = {key: len(value) for key, value in test_prob_count.items()}
+        # le_path = os.path.join(self.args.asset_dir, "test_prob_count.pk")
+        # with open(le_path, 'wb') as f:
+        #     pickle.dump(test_prob_count, f)
+
+        # -> 저장된 test_id별 문항수를 가져와서 mapping하는 코드입니다.
+        le_path = os.path.join(self.args.asset_dir, "test_prob_count.pk")
+        with open(le_path, 'rb') as f:
+            test_prob_count = pickle.load(f)
+
+        prev_user_id = df["userID"][0]
+        user_current_test = dict()
+        how_many_times = defaultdict(int)
+        new_feature = []
+
+        for cur_user_id, cur_test_id  in zip(df["userID"], df["testId"]):
+            if prev_user_id != cur_user_id: # 만약 사용자가 바뀌는 타이밍이라면, dict를 새로 선언해줍니다. 왜냐하면 사용자별로 파악하고 있으니까요!
+                prev_user_id = cur_user_id
+                user_current_test = dict()
+                how_many_times = defaultdict(int)
+
+            if cur_test_id not in user_current_test: # 만약 사용자가 지금 풀고 있는 문제 목록에 없는 거라면,
+                user_current_test[cur_test_id] = test_prob_count[cur_test_id] - 1 # 문제 목록에 추가해주면서, 남아있는 문항수도 추가합니다. (-1을 하는 이유는 현재 row를 확인했을 때 한문제를 푼거랑 동일하니까요!)
+                new_feature.append(how_many_times[cur_test_id]) # 새로운 feature에 지금 푸는 시험지는 몇번째 푼것인지 기록해줍니다.
+                
+            else: # 만약 사용자가 지금 풀고 있는 문제라면,
+                user_current_test[cur_test_id] -= 1 # 해당 시험지의 남아있는 문항수를 하나 빼줍니다.
+                new_feature.append(how_many_times[cur_test_id]) # 새로운 feature에 지금 푸는 시험지는 몇번째 푼것인지 기록해줍니다.
+
+                if user_current_test[cur_test_id] == 0: # 근데 확인해보니 이미 사용자가 다 풀어버려서 남아있는 문항수가 0이라면,
+                    how_many_times[cur_test_id] += 1 # 사용자가 해당 id에 대한 시험지 하나를 다 푼것이므로, test_id를 몇번 풀었는지 나타내는 value를 +1 해줍니다.
+                    del user_current_test[cur_test_id] # 현재 풀고 있는 문제에서 제거하기 위해 test_id에 해당하는 key값을 삭제합니다.
+            
+        new_feature = pd.DataFrame(new_feature, columns=['nth_test'])
+        df = pd.concat([df, new_feature], axis=1)
+
+        return df
+
+    def __cate_preprocessing(self, df, cate_cols, is_train=True):
+        def save_labels(encoder, name):
+            le_path = os.path.join(self.args.asset_dir, name + "_classes.npy")
+            np.save(le_path, encoder.classes_)
 
         if not os.path.exists(self.args.asset_dir):
             os.makedirs(self.args.asset_dir)
@@ -58,131 +123,69 @@ class Preprocess:
                 # For UNKNOWN class
                 a = df[col].unique().tolist() + ["unknown"]
                 le.fit(a)
-                self.__save_labels(le, col)
+                save_labels(le, col)
             else:
                 label_path = os.path.join(self.args.asset_dir, col + "_classes.npy")
                 le.classes_ = np.load(label_path)
 
-                df[col] = df[col].apply(lambda x: x if x in le.classes_ else "unknown")
+                df[col] = df[col].astype(str).apply(lambda x: x if x in le.classes_ else "unknown")
 
-            # 모든 컬럼이 범주형이라고 가정
             df[col] = df[col].astype(str)
             test = le.transform(df[col])
             df[col] = test
 
-        def convert_time(s):
-            timestamp = time.mktime(
-                datetime.strptime(s, "%Y-%m-%d %H:%M:%S").timetuple()
-            )
-            return int(timestamp)
-
-        df["Timestamp"] = df["Timestamp"].apply(convert_time)
-
         return df
 
-    def __feature_engineering(self, df):
+    def __cont_preprocessing(self, df, cont_cols, is_train=True):
         # TODO
 
-        # --- user별 Test의 정답률 feature 추가
-        total_count, answer_count = 1, 0
-        pr_user_id, pr_test_id, pr_answer_code = 0, 'A060000001', 1
-        user_test_correct_ratio = []
+        # continuous feature의 결측치를 0으로 채웁니다.
+        for col in df[cont_cols]:
+            df[col].fillna(0, inplace=True)
 
-        for user_id, test_id, answer_code in zip(df['userID'], df['testId'], df['answerCode']):
-            if (user_id != pr_user_id) or (test_id != pr_test_id): # 다른 user 시작 or 다른 시험지 시작
-                total_count, answer_count = 1, 0
-                pr_user_id = user_id
-                pr_test_id = test_id
-            if answer_code == 1:
-                answer_count += 1
-            user_test_correct_ratio.append(answer_count/total_count)
-            total_count += 1
-        
-        user_test_correct_ratio = pd.DataFrame(user_test_correct_ratio, columns=['correctRate'])
-        df = df.join(user_test_correct_ratio)
-
-        # 유저들의 문제 풀이수, 정답 수, 정답률을 시간순으로 누적해서 계산
-        df['correctAnswer'] = df.groupby('userID')['answerCode'].transform(lambda x: x.cumsum().shift(1))
-        df['totalAnswer'] = df.groupby('userID')['answerCode'].cumcount()
-        df['userAcc'] = df['correctAnswer']/df['totalAnswer']
-        
-        # testId와 KnowledgeTag의 전체 정답률은 한번에 계산
-        # 아래 데이터는 제출용 데이터셋에 대해서도 재사용
-        correct_t = df.groupby(['testId'])['answerCode'].agg(['mean'])
-        correct_t.columns = ["test_mean"]
-        correct_k = df.groupby(['KnowledgeTag'])['answerCode'].agg(['mean'])
-        correct_k.columns = ["tag_mean"]
-        
-        df = pd.merge(df, correct_t, on=['testId'], how="left")
-        df = pd.merge(df, correct_k, on=['KnowledgeTag'], how="left")
         return df
-
-    def __make_stratified_key(self, df):
-        def assessmentItemID2item(x):
-            return x[-3:]
-        def assessmentItemID2test(x):
-            return x[1:-3]
-        def test2test_pre(x):
-            return x[:3]    
-        def test2test_post(x):
-            return x[3:]
-
-        stratified = df.copy()
-        
-        stratified['problem_number'] = stratified.assessmentItemID.map(assessmentItemID2item)
-        stratified['test'] = stratified.assessmentItemID.map(assessmentItemID2test)
-        stratified['test_pre'] = stratified.test.map(test2test_pre)
-        stratified['test_post'] = stratified.test.map(test2test_post)
-        stratified.drop('test', axis=1, inplace=True)
-
-        user_test_group = stratified.groupby("userID")
-
-        result = []
-
-        for key, group in user_test_group:
-            test_pres = np.sort(group.test_pre.unique())
-            key = ''
-            for test_pre in test_pres:
-                key += test_pre[1]
-
-            result.append(key)
-        
-        self.user_stratified_key = result
-
 
     def load_data_from_file(self, file_name, is_train=True):
         csv_file_path = os.path.join(self.args.data_dir, file_name)
-
         df = pd.read_csv(csv_file_path)
-        # self.__make_stratified_key(df)
+
+        # stratified K-Fold를 위한 key value를 만듭니다.
+        self.__make_stratified_key(df)
+
+        # row에 추가할 feature column을 생성합니다.
         df = self.__feature_engineering(df)
-        df = self.__preprocessing(df, is_train)
 
+        # ========================== !! 이 부분을 만드신 feature의 column name으로 채워주세요 !! ==========================
+        # feature engineering을 수행한 뒤, feature로 사용할 column을 적어줍니다.
+        cate_cols = ["testId", "assessmentItemID", "KnowledgeTag", "nth_test"]
+        cont_cols = ["assessmentItemID_mean"]
+        # ==================================================================================================================
+        self.args.n_cates = len(cate_cols) # 사용할 categorical feature 개수
+        self.args.n_conts = len(cont_cols) # 사용할 continuous feature 개수
+
+        # categorical & continuous feature의 preprocessing을 진행합니다.
+        df = self.__cate_preprocessing(df, cate_cols, is_train)
+        df = self.__cont_preprocessing(df, cont_cols, is_train)
         df = df.sort_values(by=["userID", "Timestamp"], axis=0)
-        # =============================== !!!!여기만 주의하자!!!! ===============================
-        columns = ["userID", "testId", "assessmentItemID", "KnowledgeTag", 
-                   "correctRate", "correctAnswer", "totalAnswer", "userAcc", "test_mean", "tag_mean", "answerCode"]
-        args.n_cates = 3
-        args.n_cons = 6
-        # ========================================================================================
-        args.cate_embs = []
-        for c in columns[1: args.n_cates+1]:
-            args.cate_embs.append(len(np.load(os.path.join(self.args.asset_dir, f"{c}_classes.npy"))))
-        
-        args.n_cates += 1
-        args.cate_embs.append(3)
 
-        for col in df.columns:
-            df[col].fillna(0, inplace=True)
+        # categorical feature의 embedding 차원을 저장 (각 feature가 가지는 총 class의 개수)
+        self.args.cate_embs = []
+        for cate in cate_cols:
+            self.args.cate_embs.append(len(np.load(os.path.join(self.args.asset_dir, f"{cate}_classes.npy"))))
         
+        # interaction(이전 문제를 맞췄는지) feature를 위한 추가
+        self.args.n_cates += 1
+        self.args.cate_embs.append(3)
+
+        # 각 사용자별로 feature를 tuple 형태로 묶은 형태로 만든다.
+        columns = ["userID"] + cate_cols + cont_cols + ["answerCode"]
         group = (
             df[columns]
             .groupby("userID")
             .apply(
-                lambda r: tuple([r[c].values for c in columns[1:]])
+                lambda r: tuple([r[column].values for column in columns[1:]])
             )
         )
-
         return group.values
 
     def load_train_data(self, file_name):
@@ -198,38 +201,31 @@ class DKTDataset(torch.utils.data.Dataset):
         self.args = args
 
     def __getitem__(self, index):
-        row = self.data[index]
+        row = list(self.data[index])
 
         # 각 data의 sequence length
         seq_len = len(row[0])
 
-        test, question, tag, correct = row
-
-        cate_cols = [test, question, tag, rate, correct]
-
         # max seq len을 고려하여서 이보다 길면 자르고 아닐 경우 그대로 냅둔다
         if seq_len > self.args.max_seq_len:
-            for i, col in enumerate(cate_cols):
-                cate_cols[i] = col[-self.args.max_seq_len :]
+            for i, col in enumerate(row):
+                row[i] = col[-self.args.max_seq_len :]
             mask = np.ones(self.args.max_seq_len, dtype=np.int16)
         else:
             mask = np.zeros(self.args.max_seq_len, dtype=np.int16)
             mask[-seq_len:] = 1
 
         # mask도 columns 목록에 포함시킴
-        cate_cols.append(mask)
+        row.append(mask)
 
         # np.array -> torch.tensor 형변환
-        for i, col in enumerate(cate_cols):
-            cate_cols[i] = torch.tensor(col)
+        for i, col in enumerate(row):
+            row[i] = torch.tensor(col)
 
-        return cate_cols
+        return row
 
     def __len__(self):
         return len(self.data)
-
-
-from torch.nn.utils.rnn import pad_sequence
 
 
 def collate(batch):
