@@ -1,6 +1,8 @@
 # ⭕❌ **Deep Knowledge Tracing**
-![ezgif-1-dfc7d299ff28](https://user-images.githubusercontent.com/63627253/119375251-8f2c8100-bcf5-11eb-89b7-583434f96171.gif)
-
+<p align='center'>
+<img src=https://user-images.githubusercontent.com/63627253/119375251-8f2c8100-bcf5-11eb-89b7-583434f96171.gif width=75%>
+</p>
+          
 </br>
 
 ## **Task Description**
