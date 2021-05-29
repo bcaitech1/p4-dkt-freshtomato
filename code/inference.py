@@ -10,7 +10,11 @@ def main(args):
     args.device = device
 
     preprocess = Preprocess(args)
+
+    print("loading test data...")
     preprocess.load_test_data(args.test_file_name)
+
+    print("get preprocessed data...")
     test_data = preprocess.get_test_data()
 
     trainer.inference(args, test_data)
