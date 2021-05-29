@@ -20,15 +20,12 @@ def main(args):
     print("get preprocessed data...")
     train_data = preprocess.get_train_data()
 
+    print("split train, valid dataset")
     train_data, valid_data = preprocess.split_data(train_data)
 
+    # wandb setting
     wandb.login()
-    wandb.init(project=args.wandb_project_name, config=vars(args))
-
-    if args.wandb_run_name:
-        wandb.run.name = args.wandb_run_name
-    else:
-        args.wandb_run_name = wandb.run.name
+    wandb.init(project=args.wandb_project_name, name=args.wandb_run_name, config=vars(args))
 
     args.model_dir = f"{args.model_dir}/{args.wandb_run_name}"
     os.makedirs(args.model_dir, exist_ok=True)
@@ -38,5 +35,4 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args(mode="train")
-
     main(args)
