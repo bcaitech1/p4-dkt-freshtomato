@@ -5,7 +5,7 @@ import argparse
 def parse_args(mode="train"):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--seed", default=729, type=int, help="seed")
+    parser.add_argument("--seed", default=42, type=int, help="seed")
 
     parser.add_argument("--device", default="cpu", type=str, help="cpu or gpu")
 

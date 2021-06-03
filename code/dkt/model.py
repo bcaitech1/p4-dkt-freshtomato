@@ -16,6 +16,7 @@ except:
 
 
 class LSTM(nn.Module):
+
     def __init__(self, args):
         super(LSTM, self).__init__()
         self.args = args
@@ -24,65 +25,74 @@ class LSTM(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # Embedding
-        # interaction은 현재 correct로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim // 3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim // 3)
-        self.embedding_question = nn.Embedding(
-            self.args.n_questions + 1, self.hidden_dim // 3
-        )
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim // 3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim // 3) * 4, self.hidden_dim)
-
-        self.lstm = nn.LSTM(
-            self.hidden_dim, self.hidden_dim, self.n_layers, batch_first=True
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
         )
 
+        # continuous features
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
+
+        # lstm layer
+        self.lstm = nn.LSTM(self.hidden_dim,
+                            self.hidden_dim,
+                            self.n_layers,
+                            batch_first=True)
+        
         # Fully connected layer
         self.fc = nn.Linear(self.hidden_dim, 1)
 
         self.activation = nn.Sigmoid()
 
     def init_hidden(self, batch_size):
-        h = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        h = torch.zeros(
+            self.n_layers,
+            batch_size,
+            self.hidden_dim)
         h = h.to(self.device)
 
-        c = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        c = torch.zeros(
+            self.n_layers,
+            batch_size,
+            self.hidden_dim)
         c = c.to(self.device)
 
         return (h, c)
 
     def forward(self, input):
 
-        test, question, tag, mask, interaction, _ = input
+        categorical, continuous, _, __ = input
+        batch_size = categorical[0].size(0)
 
-        batch_size = interaction.size(0)
+        # categorical
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, 2)
+        x_cat = self.cate_comb_proj(x_cat)
+        
+        # continuous
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
-        # Embedding
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
-
-        embed = torch.cat(
-            [
-                embed_interaction,
-                embed_test,
-                embed_question,
-                embed_tag,
-            ],
-            2,
-        )
-
-        X = self.comb_proj(embed)
-
+        # pass lstm layer
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
         out = out.contiguous().view(batch_size, -1, self.hidden_dim)
 
+        # pass last block hidden dimension to fully connected layer
         out = self.fc(out)
         preds = self.activation(out).view(batch_size, -1)
 
@@ -101,15 +111,24 @@ class LSTMATTN(nn.Module):
         self.n_heads = self.args.n_heads
         self.drop_out = self.args.drop_out
 
-        # Embedding 
-        # interaction은 현재 correct로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim//3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim//3)
-        self.embedding_question = nn.Embedding(self.args.n_questions + 1, self.hidden_dim//3)
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim//3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim//3)*4, self.hidden_dim)
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
+
+        # continuous features
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
@@ -149,25 +168,22 @@ class LSTMATTN(nn.Module):
 
     def forward(self, input):
 
-        test, question, tag, mask, interaction, _ = input
+        categorical, continuous, mask, __ = input
+        batch_size = categorical[0].size(0)
 
-        batch_size = interaction.size(0)
-
-        # Embedding
-
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
+        # categorical
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, -1)
+        x_cat = self.cate_comb_proj(x_cat)
         
+        # continuous
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
-        embed = torch.cat([embed_interaction,
-                           embed_test,
-                           embed_question,
-                           embed_tag,], 2)
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
-        X = self.comb_proj(embed)
-
+        # pass lstm layer
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
         out = out.contiguous().view(batch_size, -1, self.hidden_dim)
@@ -198,15 +214,24 @@ class Bert(nn.Module):
         self.hidden_dim = self.args.hidden_dim
         self.n_layers = self.args.n_layers
 
-        # Embedding 
-        # interaction은 현재 correct으로 구성되어있다. correct(1, 2) + padding(0)
-        self.embedding_interaction = nn.Embedding(3, self.hidden_dim//3)
-        self.embedding_test = nn.Embedding(self.args.n_test + 1, self.hidden_dim//3)
-        self.embedding_question = nn.Embedding(self.args.n_questions + 1, self.hidden_dim//3)
-        self.embedding_tag = nn.Embedding(self.args.n_tag + 1, self.hidden_dim//3)
+        # categorical features
+        # ========================== nn.Embedding에 들어갈 self.embedding_dims의 개수를 수정해주세요 ===============================
+        self.embedding_dims = [self.hidden_dim // 3] * self.args.n_cates # cate feature 수와 동일하게 해주세요
+        assert len(self.embedding_dims) == self.args.n_cates
+        self.total_embedding_dims = sum(self.embedding_dims)
+        # =========================================================================================================================
 
-        # embedding combination projection
-        self.comb_proj = nn.Linear((self.hidden_dim//3)*4, self.hidden_dim)
+        self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        self.cate_comb_proj = nn.Sequential(
+            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
+
+        # continuous features
+        self.cont_comb_proj = nn.Sequential(
+            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
+            nn.LayerNorm(self.hidden_dim // 2)
+        )
 
         # Bert config
         self.config = BertConfig( 
@@ -222,30 +247,26 @@ class Bert(nn.Module):
         self.encoder = BertModel(self.config)  
 
         # Fully connected layer
-        self.fc = nn.Linear(self.args.hidden_dim, 1)
+        self.fc = nn.Linear(self.hidden_dim, 1)
        
         self.activation = nn.Sigmoid()
 
 
     def forward(self, input):
-        test, question, tag, mask, interaction, _ = input
-        batch_size = interaction.size(0)
+        categorical, continuous, mask, __ = input
+        batch_size = categorical[0].size(0)
 
-        # 신나는 embedding
+        # categorical
+        x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
+        x_cat = torch.cat(x_cat, -1)
+        x_cat = self.cate_comb_proj(x_cat)
         
-        embed_interaction = self.embedding_interaction(interaction)
-        embed_test = self.embedding_test(test)
-        embed_question = self.embedding_question(question)
-        embed_tag = self.embedding_tag(tag)
+        # continuous
+        x_cont = torch.cat([c.unsqueeze(-1) for c in continuous], -1).to(torch.float32)
+        x_cont = self.cont_comb_proj(x_cont)
 
-        embed = torch.cat([embed_interaction,
-        
-                           embed_test,
-                           embed_question,
-        
-                           embed_tag,], 2)
-
-        X = self.comb_proj(embed)
+        # concat Catgegorical & Continuous Feature
+        X = torch.cat([x_cat, x_cont], -1)
 
         # Bert
         encoded_layers = self.encoder(inputs_embeds=X, attention_mask=mask)

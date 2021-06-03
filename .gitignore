@@ -146,6 +146,7 @@ code/wandb/**
 input/
 
 # MJH
+**/notebook_mjh/**
 EDA_MJH.ipynb
 README_MJH.md
 baseline_mjh.ipynb
