@@ -245,7 +245,8 @@ def get_model(args):
 # 배치 전처리
 def process_batch(batch, args):
 
-    correct, mask = batch[-2], batch[-1]
+
+    test, question, tag, correct, mask = batch
 
     # change to float
     correct = correct.type(torch.FloatTensor)
