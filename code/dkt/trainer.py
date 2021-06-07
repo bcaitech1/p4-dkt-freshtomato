@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import pickle
 import json
+from pprint import pprint
 
 from .dataloader import get_loaders
 from .optimizer import get_optimizer
@@ -30,8 +31,8 @@ def run(args, train_data, valid_data):
     best_auc = -1
     best_acc = -1
     early_stopping_counter = 0
-    for epoch in range(args.n_epochs):
 
+    for epoch in range(args.n_epochs):
         print(f"Start Training: Epoch {epoch + 1}")
 
         ### TRAIN
@@ -111,7 +112,7 @@ def train(train_loader, model, optimizer, args):
     for step, batch in enumerate(train_loader):
         input = process_batch(batch, args)
         preds = model(input)
-        targets = input[-1]  # correct
+        targets = input[-1] 
 
         loss = compute_loss(preds, targets)
         update_params(loss, model, optimizer, args)
@@ -151,7 +152,6 @@ def validate(valid_loader, model, args):
     total_targets = []
     for step, batch in enumerate(valid_loader):
         input = process_batch(batch, args)
-
         preds = model(input)
         targets = input[-1]  # correct
 
@@ -184,11 +184,12 @@ def inference(args, test_data):
 
     model = load_model(args)
     model.eval()
+
     _, test_loader = get_loaders(args, None, test_data)
 
     total_preds = []
 
-    for step, batch in enumerate(test_loader):
+    for batch in test_loader:
         input = process_batch(batch, args)
 
         preds = model(input)
@@ -244,35 +245,31 @@ def get_model(args):
 # 배치 전처리
 def process_batch(batch, args):
 
+
     test, question, tag, correct, mask = batch
+
     # change to float
-    mask = mask.type(torch.FloatTensor)
     correct = correct.type(torch.FloatTensor)
+    mask = mask.type(torch.FloatTensor)
 
     #  interaction을 임시적으로 correct를 한칸 우측으로 이동한 것으로 사용
     #    saint의 경우 decoder에 들어가는 input이다
     interaction = correct + 1  # 패딩을 위해 correct값에 1을 더해준다.
     interaction = interaction.roll(shifts=1, dims=1)
-    interaction[:, 0] = 0  # set padding index to the first sequence
-    interaction = (interaction * mask).to(torch.int64)
+    interaction_mask = mask.roll(shifts=1, dims=1)
+    interaction_mask[:, 0] = 0
+    interaction = (interaction * interaction_mask)
 
-    #  test_id, question_id, tag
-    test = ((test + 1) * mask).to(torch.int64)
-    question = ((question + 1) * mask).to(torch.int64)
-    tag = ((tag + 1) * mask).to(torch.int64)
+    cate_batch = [((b + 1) * mask).to(torch.int64).to(args.device) for b in batch[:args.n_cates-1]]
+    cate_batch.append(interaction.to(torch.int64).to(args.device))
 
-    # device memory로 이동
+    cont_batch = [((b) * mask).to(torch.float32).to(args.device) for b in batch[args.n_cates-1:-2]]
 
-    test = test.to(args.device)
-    question = question.to(args.device)
+    processed_batch = [cate_batch, cont_batch]
+    processed_batch.append(mask.to(args.device))
+    processed_batch.append(correct.to(args.device))
 
-    tag = tag.to(args.device)
-    correct = correct.to(args.device)
-    mask = mask.to(args.device)
-
-    interaction = interaction.to(args.device)
-
-    return (test, question, tag, mask, interaction, correct)
+    return tuple(processed_batch)
 
 
 # loss계산하고 parameter update!
