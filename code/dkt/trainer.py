@@ -1,3 +1,4 @@
+from code.dkt.model import LastQuery
 import os
 import torch
 import numpy as np
@@ -10,7 +11,7 @@ from .optimizer import get_optimizer
 from .scheduler import get_scheduler
 from .criterion import get_criterion
 from .metric import get_metric
-from .model import LSTM, LSTMATTN, Bert, GRUATTN, ATTNGRU , Saint, Saint_custom, ADDGRUATTN
+from .model import *
 
 import wandb
 
@@ -236,6 +237,8 @@ def get_model(args):
         model = Saint_custom(args)
     if args.model == "bert":
         model = Bert(args)
+    if args.model == "lastquery":
+        model = LastQuery(args)
 
     if not model:
         raise RuntimeError(
