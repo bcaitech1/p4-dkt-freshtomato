@@ -1,15 +1,15 @@
 import os
 from datetime import datetime
-import time
-import tqdm
 import pandas as pd
 import random
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, OneHotEncoder, LabelBinarizer, StandardScaler
 import numpy as np
 import torch
-from torch.nn.utils.rnn import pad_sequence
-from collections import defaultdict
-import pickle
+
+from .feature import (minyong_feature_engineering,
+                      ara_feature_engineering,
+                      jaehoon_feature_engineering,
+                      yuura_feature_engineering)
 
 
 class Preprocess:
@@ -28,6 +28,40 @@ class Preprocess:
     def get_user_stratified_key(self):
         return self.user_stratified_key
 
+    def __data_augmentation(self, df):
+        total_row = df.shape[0] - 1 # 전체 row 개수
+        prev_user = df.userID[total_row]
+        userid = [] # 새롭게 만들 userid
+        user_count = 10000 # 새로운 user를 만들 때 id를 10000부터 부여합니다.
+        row_count = 0
+
+        # dataframe의 역순으로 구해줍니다. 앞에서부터 자르기보다는 뒤에서부터 자르는게 더 좋은 정보를 살릴 수 있을 것 같아요.
+        for i in range(total_row, -1, -1):
+            cur_user = df.userID[i]
+            row_count += 1
+
+            if prev_user != cur_user: # 사용자가 아예 바뀌면 새로운 사용자로 인식합니다.
+                user_count += 1
+                prev_user = cur_user
+                row_count = 0
+            
+            elif row_count % self.args.max_seq_len == 0: # 만약 row count가 max_seq_len가 되면
+                user_count += 1 # 새로운 사용자로 인식합니다.
+                row_count = 0
+            
+            userid.append(user_count)
+        
+        # 새로운 userID를 제공하기 위해 기존에 가지고 있던 userID column을 drop 합니다.
+        df.drop(columns=["userID"], inplace=True)
+
+        # 역순으로 userID를 구했으므로 reverse 시킵니다.
+        userid.reverse()
+
+        new_user_id = pd.DataFrame(userid, columns=['userID']) # 새롭게 만든 userid를
+        df = pd.concat([df, new_user_id], axis=1)  # 기존 dataframe에 concat 해줍니다.
+
+        return df
+
     def split_data(self, data, ratio=0.9, shuffle=True):
         """
         split data into two parts with a given ratio.
@@ -45,67 +79,30 @@ class Preprocess:
         return data_1, data_2
 
     def __make_stratified_key(self, df):
-        # TODO
-        pass
+        stratified = df.copy()
+        result = []
 
-    def __feature_engineering(self, df):
-        # TODO
-        df = df.sort_values(by=["userID", "Timestamp"], axis=0)
-
-        # (1) 풀고 있는 assessmentItemID 의 정답률을 나타내는 feature
-
-        # -> train dataset에서 구한 정답률을 미리 저장하는 코드입니다.
-        # assessmentItemID_mean_sum = df.groupby(['assessmentItemID'])['answerCode'].agg(['mean', 'sum']).to_dict()
-        # le_path = os.path.join(self.args.asset_dir, "assessmentItemID_mean_sum.pk")
-        # with open(le_path, 'wb') as f:
-        #     pickle.dump(assessmentItemID_mean_sum, f)
-
-        # -> 저장된 정답률을 가져와서 mapping하는 코드입니다.
-        le_path = os.path.join(self.args.asset_dir, "assessmentItemID_mean_sum.pk")
-        with open(le_path, 'rb') as f:
-            assessmentItemID_mean_sum = pickle.load(f)
-        df["assessmentItemID_mean"] = df.assessmentItemID.map(assessmentItemID_mean_sum['mean'])
+        prev_userID = stratified.userID[0]
+        for userID, answerCode in zip(stratified.userID, stratified.answerCode.shift(1)):
+            if prev_userID != userID:
+                result.append(answerCode)
+                prev_userID = userID
+        
+        result.append(stratified.answerCode.loc[stratified.shape[0] -1])
+        self.user_stratified_key = result
 
 
-        # (2) 해당 시험지를 몇번째 푸는 것인지 나타내는 feature
-        # test_prob_count = defaultdict(set)
-        # for test_id, assessmentItemID in zip(df["testId"], df["assessmentItemID"]):
-        #     test_prob_count[test_id].add(assessmentItemID[-3:])
-        # test_prob_count = {key: len(value) for key, value in test_prob_count.items()}
-        # le_path = os.path.join(self.args.asset_dir, "test_prob_count.pk")
-        # with open(le_path, 'wb') as f:
-        #     pickle.dump(test_prob_count, f)
+    def __split_id_number(self, df):
+        def assessmentItemID2problem_number(x):
+            return x[-3:]
+        def testId2test_pre(x):
+            return x[1:4]
+        def testId2test_post(x):
+            return x[-3:]
 
-        # -> 저장된 test_id별 문항수를 가져와서 mapping하는 코드입니다.
-        le_path = os.path.join(self.args.asset_dir, "test_prob_count.pk")
-        with open(le_path, 'rb') as f:
-            test_prob_count = pickle.load(f)
-
-        prev_user_id = df["userID"][0]
-        user_current_test = dict()
-        how_many_times = defaultdict(int)
-        new_feature = []
-
-        for cur_user_id, cur_test_id  in zip(df["userID"], df["testId"]):
-            if prev_user_id != cur_user_id: # 만약 사용자가 바뀌는 타이밍이라면, dict를 새로 선언해줍니다. 왜냐하면 사용자별로 파악하고 있으니까요!
-                prev_user_id = cur_user_id
-                user_current_test = dict()
-                how_many_times = defaultdict(int)
-
-            if cur_test_id not in user_current_test: # 만약 사용자가 지금 풀고 있는 문제 목록에 없는 거라면,
-                user_current_test[cur_test_id] = test_prob_count[cur_test_id] - 1 # 문제 목록에 추가해주면서, 남아있는 문항수도 추가합니다. (-1을 하는 이유는 현재 row를 확인했을 때 한문제를 푼거랑 동일하니까요!)
-                new_feature.append(how_many_times[cur_test_id]) # 새로운 feature에 지금 푸는 시험지는 몇번째 푼것인지 기록해줍니다.
-                
-            else: # 만약 사용자가 지금 풀고 있는 문제라면,
-                user_current_test[cur_test_id] -= 1 # 해당 시험지의 남아있는 문항수를 하나 빼줍니다.
-                new_feature.append(how_many_times[cur_test_id]) # 새로운 feature에 지금 푸는 시험지는 몇번째 푼것인지 기록해줍니다.
-
-                if user_current_test[cur_test_id] == 0: # 근데 확인해보니 이미 사용자가 다 풀어버려서 남아있는 문항수가 0이라면,
-                    how_many_times[cur_test_id] += 1 # 사용자가 해당 id에 대한 시험지 하나를 다 푼것이므로, test_id를 몇번 풀었는지 나타내는 value를 +1 해줍니다.
-                    del user_current_test[cur_test_id] # 현재 풀고 있는 문제에서 제거하기 위해 test_id에 해당하는 key값을 삭제합니다.
-            
-        new_feature = pd.DataFrame(new_feature, columns=['nth_test'])
-        df = pd.concat([df, new_feature], axis=1)
+        df['problem_number'] = df.assessmentItemID.map(assessmentItemID2problem_number)
+        df['test_pre'] = df.testId.map(testId2test_pre)
+        df['test_post'] = df.testId.map(testId2test_post)
 
         return df
 
@@ -114,9 +111,25 @@ class Preprocess:
             le_path = os.path.join(self.args.asset_dir, name + "_classes.npy")
             np.save(le_path, encoder.classes_)
 
-        if not os.path.exists(self.args.asset_dir):
-            os.makedirs(self.args.asset_dir)
+        os.makedirs(self.args.asset_dir, exist_ok=True)
 
+        
+        ''' one hot encoding
+        final_cate_cols = []
+        for col in cate_cols:
+            ohe = LabelBinarizer()
+            ohe.fit(df[col])
+            transformed = ohe.transform(df[col])
+            ohe_df = pd.DataFrame(transformed, columns=ohe.classes_)
+            ohe_df = ohe_df.add_prefix(col)
+
+            df = pd.concat([df, ohe_df], axis=1)
+            final_cate_cols.extend(list(ohe_df.columns))
+
+        return df, final_cate_cols
+        '''
+
+        # Label Encoder
         for col in cate_cols:
             le = LabelEncoder()
             if is_train:
@@ -133,11 +146,22 @@ class Preprocess:
             df[col] = df[col].astype(str)
             test = le.transform(df[col])
             df[col] = test
-
+        
         return df
 
+
     def __cont_preprocessing(self, df, cont_cols, is_train=True):
-        # TODO
+
+        # scaler를 통해 전처리 해줍니다.
+        # scaler_col = cont_cols
+        # scaler = StandardScaler()
+        
+        scaler_col = ["time_elapsed", "user_problem_cumcount"] # "user_weighted_score", "correctAnswerByTime", "totalAnswerByTime"
+        scaler = MinMaxScaler()
+        for col in scaler_col:
+            scaler.fit(pd.DataFrame(df[col]))
+            transformed = scaler.transform(pd.DataFrame(df[col]))
+            df[col] = transformed
 
         # continuous feature의 결측치를 0으로 채웁니다.
         for col in df[cont_cols]:
@@ -148,25 +172,39 @@ class Preprocess:
     def load_data_from_file(self, file_name, is_train=True):
         csv_file_path = os.path.join(self.args.data_dir, file_name)
         df = pd.read_csv(csv_file_path)
+        df = df.sort_values(by=["userID", "Timestamp"], axis=0)
 
-        # stratified K-Fold를 위한 key value를 만듭니다.
-        self.__make_stratified_key(df)
+        if is_train and self.args.aug:
+            # data augmentation
+            df = self.__data_augmentation(df)
+
+        # userID, 시간 순으로 dataframe 정렬
+
+        if is_train:
+            # stratified K-Fold를 위한 key value를 만듭니다.
+            self.__make_stratified_key(df)
+
+        # feature engineering할 때 더 편리하게 사용할 수 있도록 testid와 assessmentItemId에서 number를 추출합니다.
+        df = self.__split_id_number(df)
 
         # row에 추가할 feature column을 생성합니다.
-        df = self.__feature_engineering(df)
+        df = minyong_feature_engineering(self.args, df, is_train)
+        df = ara_feature_engineering(self.args, df, is_train)
+        df = jaehoon_feature_engineering(self.args, df, is_train)
+        df = yuura_feature_engineering(self.args, df, is_train)
 
         # ========================== !! 이 부분을 만드신 feature의 column name으로 채워주세요 !! ==========================
         # feature engineering을 수행한 뒤, feature로 사용할 column을 적어줍니다.
-        cate_cols = ["testId", "assessmentItemID", "KnowledgeTag", "nth_test"]
-        cont_cols = ["assessmentItemID_mean"]
+        cate_cols = ["problem_number", "nth_test"] # , "assessmentItemID", "KnowledgeTag", "testId"        "user_test_comb" ,    "test_pre", "test_post"      "userTestAnswer", "userTestWrong"
+        cont_cols = ["assessmentItemID_mean", "KnowledgeTag_mean", "testId_mean", "time_elapsed", "user_problem_cumcount"] # "user_total_accs", , "totalAnswerByTime", "correctAnswerByTime", "userAccByTime"
         # ==================================================================================================================
+        # categorical & continuous feature의 preprocessing을 진행합니다.
+        df = self.__cont_preprocessing(df, cont_cols, is_train)
+        df = self.__cate_preprocessing(df, cate_cols, is_train)
+        # df = df.sort_values(by=["userID", "Timestamp"], axis=0)
+
         self.args.n_cates = len(cate_cols) # 사용할 categorical feature 개수
         self.args.n_conts = len(cont_cols) # 사용할 continuous feature 개수
-
-        # categorical & continuous feature의 preprocessing을 진행합니다.
-        df = self.__cate_preprocessing(df, cate_cols, is_train)
-        df = self.__cont_preprocessing(df, cont_cols, is_train)
-        df = df.sort_values(by=["userID", "Timestamp"], axis=0)
 
         # categorical feature의 embedding 차원을 저장 (각 feature가 가지는 총 class의 개수)
         self.args.cate_embs = []
@@ -179,6 +217,13 @@ class Preprocess:
 
         # 각 사용자별로 feature를 tuple 형태로 묶은 형태로 만든다.
         columns = ["userID"] + cate_cols + cont_cols + ["answerCode"]
+
+        # check all features
+        print(df[columns].head(20))
+        print(df[columns].tail(20))
+        print(df[columns].describe())
+        # exit(1)
+
         group = (
             df[columns]
             .groupby("userID")
