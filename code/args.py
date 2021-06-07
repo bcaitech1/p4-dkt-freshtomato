@@ -47,8 +47,10 @@ def parse_args(mode="train"):
         "--hidden_dim", default=64, type=int, help="hidden dimension size"
     )
     parser.add_argument("--n_layers", default=2, type=int, help="number of layers")
+    parser.add_argument("--encoder_layers", default=1, type=int, help="number of encoder layers")
     parser.add_argument("--n_heads", default=2, type=int, help="number of heads")
     parser.add_argument("--drop_out", default=0.2, type=float, help="drop out rate")
+    parser.add_argument("--bi_direct", default=False, type=bool, help="bi directional rnn")
 
     # 훈련
     parser.add_argument("--n_epochs", default=20, type=int, help="number of epochs")
@@ -56,6 +58,7 @@ def parse_args(mode="train"):
     parser.add_argument("--lr", default=0.0001, type=float, help="learning rate")
     parser.add_argument("--clip_grad", default=10, type=int, help="clip grad")
     parser.add_argument("--patience", default=5, type=int, help="for early stopping")
+    parser.add_argument("--aug", default=False, type=bool, help="data augmentation")
     parser.add_argument("--kfold", default=None, type=int, help="K-fold")
 
     parser.add_argument(

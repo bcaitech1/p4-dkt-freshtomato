@@ -9,7 +9,6 @@ from dkt import trainer
 import torch
 from dkt.utils import set_seed
 from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import KFold
 import wandb
 
 
@@ -27,8 +26,9 @@ def main(args):
     train_all_data = preprocess.get_train_data()
 
     wandb.login()
-    
-    kf = KFold(n_splits=args.kfold, shuffle=True, random_state=args.seed)
+    user_stratified_key = preprocess.get_user_stratified_key()
+
+    skf = StratifiedKFold(n_splits=args.kfold, shuffle=True, random_state=args.seed)
     fold_counter = 0
 
     args.model_dir = os.path.join(args.model_dir, args.wandb_run_name)
@@ -43,7 +43,7 @@ def main(args):
     # fold별 acc&auc와 average acc&auc를 저장할 dictionary
     final_score_dict = {}
     # K-Fold 학습 시작
-    for train_idx, test_idx in kf.split(train_all_data):
+    for train_idx, test_idx in skf.split(train_all_data, user_stratified_key):
         args.fold = fold_counter
 
         train_data = train_all_data[train_idx]
