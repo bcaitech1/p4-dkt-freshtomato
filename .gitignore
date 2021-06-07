@@ -128,6 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# asset
+code/asset/*
 # wandb
 wandb/**
 code/wandb/**
@@ -150,3 +152,10 @@ input/
 EDA_MJH.ipynb
 README_MJH.md
 baseline_mjh.ipynb
+**/output_pycaret/**
+
+# Pycaret
+**/catboost_info/**
+*.tfevents
+*.json
+*.log
