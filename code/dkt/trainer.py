@@ -1,3 +1,4 @@
+from code.dkt.model import LastQuery
 import os
 import torch
 import numpy as np
@@ -10,7 +11,7 @@ from .optimizer import get_optimizer
 from .scheduler import get_scheduler
 from .criterion import get_criterion
 from .metric import get_metric
-from .model import LSTM, LSTMATTN, Bert
+from .model import *
 
 import wandb
 
@@ -60,6 +61,7 @@ def run(args, train_data, valid_data):
         if auc > best_auc:
             best_epoch_auc = epoch  # best_auc가 출현한 epoch
             best_auc = auc
+            best_acc = acc
             # torch.nn.DataParallel로 감싸진 경우 원래의 model을 가져옵니다.
             model_to_save = model.module if hasattr(model, "module") else model
             save_checkpoint(
@@ -78,24 +80,18 @@ def run(args, train_data, valid_data):
                     f"EarlyStopping counter: {early_stopping_counter} out of {args.patience}"
                 )
                 break
-            
-        # best accuracy 저장
-        if acc > best_acc:
-            best_acc = acc
-            best_epoch_acc = epoch
 
         # scheduler
         if args.scheduler == "plateau":
-            scheduler.step(best_auc)
+            scheduler.step(auc)
         else:
             scheduler.step()
 
     # best epoch과 best score를 저장해 놓은 best_dict
     best_dict = {
         "best_epoch(auc)": best_epoch_auc,
-        "best_valid_auc": best_auc,
-        "best_epoch(acc)": best_epoch_acc,
-        "best_valid_acc": best_acc,
+        "auc": best_auc,
+        "acc": best_acc,
     }
 
     # Save best_dict
@@ -229,8 +225,20 @@ def get_model(args):
         model = LSTM(args)
     if args.model == "lstmattn":
         model = LSTMATTN(args)
+    if args.model == "gruattn":
+        model = GRUATTN(args)
+    if args.model == "addgruattn":
+        model = ADDGRUATTN(args)
+    if args.model == "attngru":
+        model = ATTNGRU(args)
+    if args.model == "saint":
+        model = Saint(args)
+    if args.model == "saintcustom":
+        model = Saint_custom(args)
     if args.model == "bert":
         model = Bert(args)
+    if args.model == "lastquery":
+        model = LastQuery(args)
 
     if not model:
         raise RuntimeError(
