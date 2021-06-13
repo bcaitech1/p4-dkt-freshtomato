@@ -153,6 +153,7 @@ EDA_MJH.ipynb
 README_MJH.md
 baseline_mjh.ipynb
 **/output_pycaret/**
+**/output_ensemble/**
 
 # Pycaret
 **/catboost_info/**
