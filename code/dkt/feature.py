@@ -1,10 +1,26 @@
-import math
 import pickle
 import os
+import numpy as np
 import pandas as pd
 from collections import defaultdict
 
+def __split_id_number(self, df):
+    def assessmentItemID2problem_number(x):
+        return x[-3:]
+    def testId2test_pre(x):
+        return x[1:4]
+    def testId2test_post(x):
+        return x[-3:]
+
+    df['problem_number'] = df.assessmentItemID.map(assessmentItemID2problem_number)
+    df['test_pre'] = df.testId.map(testId2test_pre)
+    df['test_post'] = df.testId.map(testId2test_post)
+
+    return df
+
+
 def save_pickle(args, name, object):
+    os.makedirs(args.asset_dir, exist_ok=True)
     pickle_path = os.path.join(args.asset_dir, name)
     with open(pickle_path, 'wb') as f:
         pickle.dump(object, f)
@@ -43,6 +59,18 @@ def minyong_feature_engineering(args, df, is_train):
 
     KnowledgeTag_mean_sum = load_pickle(args, "KnowledgeTag_mean_sum.pk")
     df["KnowledgeTag_mean"] = df.KnowledgeTag.map(KnowledgeTag_mean_sum['mean'])
+
+
+    # Continuous feature -> Categorical에도 활용
+    def mean_for_cat(x):
+        for i in range(1, 20):
+            if x < i * 0.05:
+                return i
+        return 20
+
+    df["assessmentItemID_mean_cat"] = df.assessmentItemID_mean.apply(mean_for_cat)
+    df["KnowledgeTag_mean_cat"] = df.KnowledgeTag_mean.apply(mean_for_cat)
+    df["testId_mean_cat"] = df.testId_mean.apply(mean_for_cat)
 
 
     # (4) 해당 시험지를 몇번째 푸는 것인지 나타내는 feature
@@ -163,8 +191,17 @@ def minyong_feature_engineering(args, df, is_train):
             x = 300
         return x
     time_elapsed = time_elapsed["time_elapsed"].apply(max_limit)
-
+    df["log_time_elapsed"] = np.log1p(time_elapsed)
+    
     df = pd.concat([df, time_elapsed], axis=1)
+
+    def time_for_cat(x):
+        for i in range(1, 30):
+            if x < 10 * i:
+                return i
+        return 30
+
+    df["time_elapsed_cat"] = df.time_elapsed.apply(time_for_cat)
 
     # (8) 현재까지 몇문제를 풀었는지
     df["user_problem_cumcount"] = df.groupby("userID")["assessmentItemID"].cumcount()
@@ -173,6 +210,127 @@ def minyong_feature_engineering(args, df, is_train):
 
 
 def ara_feature_engineering(args, df, is_train):
+    '''
+    # ------- testId 별 assessmentItemID 수
+    test_prob_count = defaultdict(set)
+    for test_id, assessmentItemID in zip(df["testId"], df["assessmentItemID"]):
+        test_prob_count[test_id].add(assessmentItemID[-3:])
+    test_prob_count = {key: len(value) for key, value in test_prob_count.items()}
+
+    # ------- user의 평균 문제 풀이 시간 (시험지 별 체크)
+    next_df = df.shift(-1).fillna(-1)
+    prev_df = df.shift(1).fillna(-1)
+    df["diff"] = pd.to_datetime(next_df["Timestamp"]) - pd.to_datetime(df["Timestamp"])
+
+    pr_user_id = df["userID"][0]
+    pr_test_num, diff = 1, 0
+    total_test_day = 1
+
+    user_current_test = defaultdict(int)
+    user_ox_count = dict()
+    user_continue_ox_count = dict()
+    user_assessmentnum_answerrate = dict()
+
+    user_assessment_avg, user_test_done_time = [], []
+    user_answer_cnt, user_wrong_cnt = [], []
+    user_continue_answer_cnt, user_continue_wrong_cnt = [], []
+    user_test_answer_rate = []
+    user_assessment_time = []
+    user_total_test_days = []
+
+    for user_id, pr_test, nx_test, diff_time, prev_answer in zip(df["userID"], df["testId"], next_df["testId"], df["diff"], prev_df["answerCode"]):
+        if user_id != pr_user_id: # 다른 user 시작
+            pr_test_num, diff = 1, 0
+            user_current_test = defaultdict(int)
+            user_ox_count = dict()
+            user_continue_ox_count = dict()
+            user_assessmentnum_answerrate = dict()
+            pr_user_id = user_id
+            prev_answer = -1
+            total_test_day = 1
+        
+        if user_current_test[pr_test] == 0 or nx_test == -1: # 새로운 시험지거나 맨 마지막일 경우
+            prev_answer = -1
+        
+        if pr_test not in user_current_test:
+            user_current_test[pr_test] = 1 # 현재 시험지의 푼 문항 수 체크
+        else:
+            user_current_test[pr_test] += 1
+        
+        if pr_test not in user_ox_count:
+            prev_count = [1, 0] if prev_answer == 1 else [0, 1] # Answer / Wrong count
+            prev_num_rate = [1, 1, 1.0] if prev_answer == 1 else [1, 0, 0.0] # 푼 문제 수, 현재까지 정답 수, 정답률
+            if prev_answer == -1:
+                prev_count = [0, 0]
+            
+            user_ox_count[pr_test] = deepcopy(prev_count)
+            user_continue_ox_count[pr_test] = deepcopy(prev_count)
+            user_assessmentnum_answerrate[pr_test] = deepcopy(prev_num_rate) # 시험지 별 푼 문항 수, 정답률
+        else:
+            if prev_answer == 1:
+                user_ox_count[pr_test][0] += 1
+                user_continue_ox_count[pr_test][0] += 1 # 이전 답이 1 이라면 +1
+                user_continue_ox_count[pr_test][1] = 0  # 연속 오답 count는 초기화
+                user_assessmentnum_answerrate[pr_test][0] += 1 # 푼 문항 수 증가
+                user_assessmentnum_answerrate[pr_test][1] += 1 # 푼 문항 중 정답수 증가
+                user_assessment_time.append(user_assessment_avg[-1]) # 마지막 문제는 평균으로 대체
+            else:
+                user_ox_count[pr_test][1] += 1
+                user_continue_ox_count[pr_test][0] = 0  # 연속정답 count는 초기화
+                user_continue_ox_count[pr_test][1] += 1 # 이전 답이 0 이라면 +1
+                user_assessmentnum_answerrate[pr_test][0] += 1 # 푼 문항 수 증가
+        
+        user_assessmentnum_answerrate[pr_test][2] = user_assessmentnum_answerrate[pr_test][1]/user_assessmentnum_answerrate[pr_test][0] # 정답률 갱신
+
+        user_answer_cnt.append(user_ox_count[pr_test][0])
+        user_wrong_cnt.append(user_ox_count[pr_test][1])
+
+        user_continue_answer_cnt.append(user_continue_ox_count[pr_test][0])
+        user_continue_wrong_cnt.append(user_continue_ox_count[pr_test][1])
+
+        user_test_answer_rate.append(user_assessmentnum_answerrate[pr_test][2])
+
+        if user_current_test[pr_test] == test_prob_count[pr_test]: # 시험지의 문제를 모두 다 풀었다면
+            del user_current_test[pr_test] # 풀고있는 시험지에서 제외 (모두 다 풀었음)
+            del user_ox_count[pr_test]
+            del user_continue_ox_count[pr_test]
+            del user_assessmentnum_answerrate[pr_test]
+        
+        user_total_test_days.append(total_test_day)
+        if len(user_current_test) == 0 or nx_test == -1: # 만약 usre가 시작한 시험지를 모두 푸는데 완료했다면
+            user_test_done_time.append(diff + user_assessment_avg[-1]) # 마지막 문제는 현재 걸린 시간에 평균적으로 걸린 시간만큼만 더해줌
+            user_assessment_avg.append(user_assessment_avg[-1]) # 마지막 문제는 이전의 평균 값으로 사용
+
+            pr_test_num, diff = 1, 0
+            user_current_test = defaultdict(int)
+            user_ox_count = dict()
+            user_continue_ox_count = dict()
+
+            user_assessmentnum_answerrate = dict()
+            user_assessment_time.append(user_assessment_avg[-1]) # 마지막 문제는 평균으로 대체
+            total_test_day +=1
+        
+        else: # 하나라도 끝내지 못한 시험지가 남아있다면
+            diff += diff_time.total_seconds()
+            
+            user_test_done_time.append(diff)
+            user_assessment_avg.append(diff/pr_test_num)
+            user_assessment_time.append(diff_time.total_seconds()) # 한 문제당 푸는데 걸린 시간
+        
+        pr_test_num += 1
+    
+    df = pd_join(df, "user_sol_time_cum", user_assessment_avg) # user의 문항을 푸는데 마친 평균 시간
+    df = pd_join(df, "user_test_done_time_cum", user_test_done_time) # user의 시험지 별 푸는데 마친 시간
+    df = pd_join(df, "user_test_answer_cum", user_answer_cnt) # user의 시험지 별 정답 수
+    df = pd_join(df, "user_test_wrong_cum", user_wrong_cnt) # user의 시험지 별 오답 수
+    df = pd_join(df, "user_test_cont_answer_cum", user_continue_answer_cnt) # user의 시험지 별 연속 정답 수
+    df = pd_join(df, "user_test_cont_wrong_cum", user_continue_wrong_cnt) # user의 시험지 별 연속 오답 수
+    df = pd_join(df, "user_test_correct_rate_cum", user_test_answer_rate) # user의 시험지 별 정답률
+    df = pd_join(df, "user_assessment_time", user_assessment_time) # user의 문제 별 푸는데 마친 시간
+    df = pd_join(df, "user_total_test_days_cum", user_total_test_days) # user의 시험을 본 날짜 수
+    df['user_test_done_time'] = df.groupby(['userID', 'user_total_test_days_cum'])["user_assessment_time"].transform(lambda x: x.sum()) 
+    '''
+    
     # 유저들의 문제 풀이수, 정답수, 정답률을 시간순으로 누적해서 계산
     df['correctAnswerByTime'] = df.groupby('userID')['answerCode'].transform(lambda x: x.cumsum().shift(1))
     df['totalAnswerByTime'] = df.groupby('userID')['answerCode'].cumcount()
