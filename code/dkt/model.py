@@ -34,16 +34,18 @@ class LSTM(nn.Module):
 
         self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
         self.cate_comb_proj = nn.Sequential(
-            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.total_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
-
+        
+        self.proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
+        
         # lstm layer
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
@@ -54,7 +56,7 @@ class LSTM(nn.Module):
         self.fc = nn.Linear(self.hidden_dim, 1)
 
         self.activation = nn.Sigmoid()
-
+    
     def init_hidden(self, batch_size):
         h = torch.zeros(
             self.n_layers,
@@ -77,7 +79,7 @@ class LSTM(nn.Module):
 
         # categorical
         x_cat = [emb_layer(categorical[i]) for i, emb_layer in enumerate(self.cate_emb)]
-        x_cat = torch.cat(x_cat, 2)
+        x_cat = torch.cat(x_cat, -1)
         x_cat = self.cate_comb_proj(x_cat)
         
         # continuous
@@ -86,7 +88,8 @@ class LSTM(nn.Module):
 
         # concat Catgegorical & Continuous Feature
         X = torch.cat([x_cat, x_cont], -1)
-
+        X = self.proj(X)
+        
         # pass lstm layer
         hidden = self.init_hidden(batch_size)
         out, hidden = self.lstm(X, hidden)
@@ -120,15 +123,17 @@ class LSTMATTN(nn.Module):
 
         self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
         self.cate_comb_proj = nn.Sequential(
-            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.total_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
+        
+        self.proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
 
         self.lstm = nn.LSTM(self.hidden_dim,
                             self.hidden_dim,
@@ -182,6 +187,7 @@ class LSTMATTN(nn.Module):
 
         # concat Catgegorical & Continuous Feature
         X = torch.cat([x_cat, x_cont], -1)
+        X = self.proj(X)
 
         # pass lstm layer
         hidden = self.init_hidden(batch_size)
@@ -222,17 +228,20 @@ class Bert(nn.Module):
         # =========================================================================================================================
 
         self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        
         self.cate_comb_proj = nn.Sequential(
-            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.total_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
-
+        
+        self.proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
+        
         # Bert config
         self.config = BertConfig( 
             3, # not used
@@ -267,11 +276,13 @@ class Bert(nn.Module):
 
         # concat Catgegorical & Continuous Feature
         X = torch.cat([x_cat, x_cont], -1)
+        X = self.proj(X)
 
         # Bert
         encoded_layers = self.encoder(inputs_embeds=X, attention_mask=mask)
         out = encoded_layers[0]
         out = out.contiguous().view(batch_size, -1, self.hidden_dim)
+        
         out = self.fc(out)
         preds = self.activation(out).view(batch_size, -1)
 
@@ -627,30 +638,32 @@ class Saint(nn.Module):
         # ENCODER embedding
         # encoder combination projection
         self.enc_cate_comb_proj = nn.Sequential(
-            nn.Linear(self.enc_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.enc_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.enc_cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
-
+        
+        self.enc_proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
 
         # DECODER embedding
         # decoder combination projection
         self.dec_cate_comb_proj = nn.Sequential(
-            nn.Linear(self.dec_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.dec_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.dec_cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
-
+        
+        self.dec_proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
 
         # Positional encoding
         self.pos_encoder = PositionalEncoding(self.hidden_dim, self.dropout, self.args.max_seq_len)
@@ -698,6 +711,7 @@ class Saint(nn.Module):
 
         # concat
         embed_enc = torch.cat([enc_x_cat, enc_x_cont], -1)
+        embed_enc = self.enc_proj(embed_enc)
 
 
         # DECODER Embedding
@@ -712,6 +726,7 @@ class Saint(nn.Module):
 
         # concat
         embed_dec = torch.cat([dec_x_cat, dec_x_cont], -1)
+        embed_dec = self.dec_proj(embed_dec)
         
         
         # ATTENTION MASK 생성
@@ -775,16 +790,17 @@ class Saint_custom(nn.Module):
         # ENCODER embedding
         # encoder combination projection
         self.enc_cate_comb_proj = nn.Sequential(
-            nn.Linear(self.enc_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.total_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.enc_cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
-
+        
+        self.enc_proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
 
         # DECODER embedding
         # decoder combination projection
@@ -792,7 +808,6 @@ class Saint_custom(nn.Module):
             nn.Linear(self.dec_embedding_dims, self.hidden_dim),
             nn.LayerNorm(self.hidden_dim)
         )
-
 
         # Positional encoding
         self.pos_encoder = PositionalEncoding(self.hidden_dim, self.dropout, self.args.max_seq_len)
@@ -840,6 +855,7 @@ class Saint_custom(nn.Module):
 
         # concat
         embed_enc = torch.cat([enc_x_cat, enc_x_cont], -1)
+        embed_enc = self.enc_proj(embed_enc)
 
 
         # DECODER Embedding (Response = interaction)
@@ -910,16 +926,19 @@ class LastQuery(nn.Module):
         # =========================================================================================================================
 
         self.cate_emb = nn.ModuleList([nn.Embedding(x, self.embedding_dims[idx]) for idx, x in enumerate(self.args.cate_embs)])
+        
         self.cate_comb_proj = nn.Sequential(
-            nn.Linear(self.total_embedding_dims, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.total_embedding_dims, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
 
         # continuous features
         self.cont_comb_proj = nn.Sequential(
-            nn.Linear(self.args.n_conts, self.hidden_dim // 2),
-            nn.LayerNorm(self.hidden_dim // 2)
+            nn.Linear(self.args.n_conts, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
         )
+        
+        self.proj = nn.Linear(self.hidden_dim*2 , self.hidden_dim)
 
         # 기존 keetar님 솔루션에서는 Positional Embedding은 사용되지 않습니다
         # 하지만 사용 여부는 자유롭게 결정해주세요 :)
@@ -994,6 +1013,7 @@ class LastQuery(nn.Module):
 
         # concat Catgegorical & Continuous Feature
         embed = torch.cat([x_cat, x_cont], -1)
+        embed = self.proj(embed)
 
         # Positional Embedding
         # last query에서는 positional embedding을 하지 않음

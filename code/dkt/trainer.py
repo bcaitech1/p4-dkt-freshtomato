@@ -1,4 +1,3 @@
-from code.dkt.model import LastQuery
 import os
 import torch
 import numpy as np
@@ -11,6 +10,7 @@ from .optimizer import get_optimizer
 from .scheduler import get_scheduler
 from .criterion import get_criterion
 from .metric import get_metric
+from .custom_model import *
 from .model import *
 
 import wandb
@@ -115,11 +115,11 @@ def train(train_loader, model, optimizer, args):
 
         if step % args.log_steps == 0:
             print(f"Training steps: {step} Loss: {str(loss.item())}")
-
+            
         # predictions
         preds = preds[:, -1]
         targets = targets[:, -1]
-
+        
         if args.device == "cuda":
             preds = preds.to("cpu").detach().numpy()
             targets = targets.to("cpu").detach().numpy()
@@ -239,6 +239,20 @@ def get_model(args):
         model = Bert(args)
     if args.model == "lastquery":
         model = LastQuery(args)
+    if args.model == "cnn":
+        model = BaseConv(args)
+    if args.model == "deepcnn":
+        model = DeepConv(args)
+    if args.model == 'deepcnnattn':
+        model = DeepConvAttn(args)
+    if args.model == 'deepcnnattn_ver2':
+        model = DeepConvAttnVer2(args)
+    if args.model == 'res':
+        model = DeepConvRes(args)
+    if args.model == 'res2':
+        model = DeepConvRes2(args)
+    if args.model == 'res3':
+        model = DeepConvRes3(args)
 
     if not model:
         raise RuntimeError(

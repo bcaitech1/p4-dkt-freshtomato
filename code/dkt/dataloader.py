@@ -43,7 +43,7 @@ class Preprocess:
             if prev_user != cur_user: # 사용자가 아예 바뀌면 새로운 사용자로 인식합니다.
                 user_count += 1
                 prev_user = cur_user
-                row_count = 0
+                row_count = 1
             
             elif row_count % self.args.max_seq_len == 0: # 만약 row count가 max_seq_len가 되면
                 user_count += 1 # 새로운 사용자로 인식합니다.
@@ -66,6 +66,7 @@ class Preprocess:
         """
         split data into two parts with a given ratio.
         """
+        
         seed = self.args.seed
 
         if shuffle:
@@ -75,7 +76,7 @@ class Preprocess:
         size = int(len(data) * ratio)
         data_1 = data[:size]
         data_2 = data[size:]
-
+        
         return data_1, data_2
 
     def __make_stratified_key(self, df):
@@ -91,7 +92,7 @@ class Preprocess:
         result.append(stratified.answerCode.loc[stratified.shape[0] -1])
         self.user_stratified_key = result
 
-
+        
     def __split_id_number(self, df):
         def assessmentItemID2problem_number(x):
             return x[-3:]
@@ -112,23 +113,8 @@ class Preprocess:
             np.save(le_path, encoder.classes_)
 
         os.makedirs(self.args.asset_dir, exist_ok=True)
-
         
-        ''' one hot encoding
-        final_cate_cols = []
-        for col in cate_cols:
-            ohe = LabelBinarizer()
-            ohe.fit(df[col])
-            transformed = ohe.transform(df[col])
-            ohe_df = pd.DataFrame(transformed, columns=ohe.classes_)
-            ohe_df = ohe_df.add_prefix(col)
-
-            df = pd.concat([df, ohe_df], axis=1)
-            final_cate_cols.extend(list(ohe_df.columns))
-
-        return df, final_cate_cols
         '''
-
         # Label Encoder
         for col in cate_cols:
             le = LabelEncoder()
@@ -148,7 +134,22 @@ class Preprocess:
             df[col] = test
         
         return df
+        
+        '''
+        
+        # one hot encoding
+        final_cate_cols = []
+        for col in cate_cols:
+            ohe = LabelBinarizer()
+            ohe.fit(df[col])
+            transformed = ohe.transform(df[col])
+            ohe_df = pd.DataFrame(transformed, columns=ohe.classes_)
+            ohe_df = ohe_df.add_prefix(col)
 
+            df = pd.concat([df, ohe_df], axis=1)
+            final_cate_cols.extend(list(ohe_df.columns))
+
+        return df, final_cate_cols
 
     def __cont_preprocessing(self, df, cont_cols, is_train=True):
 
@@ -162,14 +163,15 @@ class Preprocess:
             scaler.fit(pd.DataFrame(df[col]))
             transformed = scaler.transform(pd.DataFrame(df[col]))
             df[col] = transformed
-
+        
         # continuous feature의 결측치를 0으로 채웁니다.
         for col in df[cont_cols]:
             df[col].fillna(0, inplace=True)
 
         return df
-
+        
     def load_data_from_file(self, file_name, is_train=True):
+        
         csv_file_path = os.path.join(self.args.data_dir, file_name)
         df = pd.read_csv(csv_file_path)
         df = df.sort_values(by=["userID", "Timestamp"], axis=0)
@@ -195,21 +197,24 @@ class Preprocess:
 
         # ========================== !! 이 부분을 만드신 feature의 column name으로 채워주세요 !! ==========================
         # feature engineering을 수행한 뒤, feature로 사용할 column을 적어줍니다.
-        cate_cols = ["problem_number", "nth_test"] # , "assessmentItemID", "KnowledgeTag", "testId"        "user_test_comb" ,    "test_pre", "test_post"      "userTestAnswer", "userTestWrong"
-        cont_cols = ["assessmentItemID_mean", "KnowledgeTag_mean", "testId_mean", "time_elapsed", "user_problem_cumcount"] # "user_total_accs", , "totalAnswerByTime", "correctAnswerByTime", "userAccByTime"
+        cate_cols = ["problem_number", "nth_test", "time_elapsed_cat"]
+        cont_cols = ["assessmentItemID_mean", "KnowledgeTag_mean", "testId_mean", "time_elapsed"]
+        
         # ==================================================================================================================
+        
         # categorical & continuous feature의 preprocessing을 진행합니다.
         df = self.__cont_preprocessing(df, cont_cols, is_train)
-        df = self.__cate_preprocessing(df, cate_cols, is_train)
-        # df = df.sort_values(by=["userID", "Timestamp"], axis=0)
-
+        # df = self.__cate_preprocessing(df, cate_cols, is_train) # LabelEncoder
+        df, cate_cols = self.__cate_preprocessing(df, cate_cols, is_train) # OneHotEncoder
+        
         self.args.n_cates = len(cate_cols) # 사용할 categorical feature 개수
         self.args.n_conts = len(cont_cols) # 사용할 continuous feature 개수
 
         # categorical feature의 embedding 차원을 저장 (각 feature가 가지는 총 class의 개수)
         self.args.cate_embs = []
         for cate in cate_cols:
-            self.args.cate_embs.append(len(np.load(os.path.join(self.args.asset_dir, f"{cate}_classes.npy"))))
+            # self.args.cate_embs.append(len(np.load(os.path.join(self.args.asset_dir, f"{cate}_classes.npy"))))
+            self.args.cate_embs.append(3)
         
         # interaction(이전 문제를 맞췄는지) feature를 위한 추가
         self.args.n_cates += 1
