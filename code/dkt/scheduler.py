@@ -101,7 +101,7 @@ def get_scheduler(optimizer, args):
             num_warmup_steps=args.warmup_steps,
             num_training_steps=args.total_steps,
         )
-    elif args.scheduler == "CosineAnnealingWarmupRestarts":
+    elif args.scheduler == "cosine":
         scheduler = CosineAnnealingWarmupRestarts( # ver1: first_cycle=20, warmup_steps=5, cycle_mult=1.0, max_lr=args.lr, min_lr=args.lr/100, gamma=0.8, patience=7, 
             optimizer,                             # ver2: first_cycle=30, warmup_steps=5, cycle_mult=0.8, max_lr=args.lr, min_lr=args.lr/100, gamma=0.8, patience=5
             first_cycle_steps=30,                  # ver3: first_cycle=50, warmup_steps=10, cycle_mult=1.0, max_lr=args.lr, min_lr=args.lr/100, gamma=0.8, patience=7
