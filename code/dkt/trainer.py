@@ -243,17 +243,7 @@ def get_model(args):
         model = BaseConv(args)
     if args.model == "deepcnn":
         model = DeepConv(args)
-    if args.model == 'deepcnnattn':
-        model = DeepConvAttn(args)
-    if args.model == 'deepcnnattn_ver2':
-        model = DeepConvAttnVer2(args)
-    if args.model == 'res':
-        model = DeepConvRes(args)
-    if args.model == 'res2':
-        model = DeepConvRes2(args)
-    if args.model == 'res3':
-        model = DeepConvRes3(args)
-
+	
     if not model:
         raise RuntimeError(
             f"Model {args.model} not defined: choose one of: lstm, lstmattn, bert"
