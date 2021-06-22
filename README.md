@@ -76,6 +76,7 @@
 - BaseCNN (cnn)
 - DeepCNN (deepcnn)
 
+</br>
 
 ## Directory structure
 
@@ -121,7 +122,7 @@
     └── Riiid_pretrain.ipynb
 
 ```
-
+</br>
 
 # 🍅 _Members_
 
