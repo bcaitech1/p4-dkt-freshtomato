@@ -147,7 +147,6 @@
 
 ---
 **문재훈 T1058**
-
 **[[Github](https://github.com/MoonJaeHoon)]  [[Blog](https://moonjaehoon.github.io/)]**
 
 - ML (with Customized Optuna & Pycaret)
@@ -159,7 +158,6 @@
 ---
 
 **배아라 T1084**
-
 **[[Github](https://github.com/arabae)]  [[Blog](https://arabae.github.io/)]**
 
 - LSTM, LSTM+Attention, BERT, CNN, Last Query, SAINT 등
@@ -173,7 +171,6 @@
 
 
 **이정현 T1160**
-
 **[[Github](https://github.com/gvsteve24)]  [[Blog](https://dipndeep.tistory.com/)]**
 
 - EDA
@@ -185,7 +182,6 @@
 ---
 
 **최유라 T1212**    
-
 **[[Github](https://github.com/Yuuraa)]  [[Blog](https://velog.io/@yoorachoi)]**
 
 - EDA - 학습 데이터, 테스트 데이터 분포 파악
