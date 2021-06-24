@@ -82,9 +82,9 @@
 
 ```bash
 ├── README.md                 - 리드미 파일
-│
+│ 
 ├── requirements.md           - 필요한 library
-|
+| 
 ├── dkt/                      - DL팀 utils 파일
 │   ├── criterion.py           
 │   ├── custom_model.py           
@@ -95,7 +95,7 @@
 │   │── scheduler.py       
 │   │── trainer.py                  
 |   └── utils.py
-|
+| 
 ├── code/                     - DL팀 코드 폴더
 │   ├── args.py           
 │   ├── inference.py           
@@ -103,7 +103,7 @@
 │   │── train.py       
 │   │── train_kfold.py                  
 |   └── train_stfkfold.py
-│
+│ 
 ├── notebook_pycaret          - ML팀 코드 폴더
 |   ├── Add_Feature_with_Groupby.ipynb
 |   ├── get_logs연습해보기.ipynb
@@ -112,7 +112,7 @@
 │   ├── Optuna_LightGBM_문제시간간격후처리X.ipynb
 │   ├── output파일_best랑비교해보기.ipynb
 |   └── PermutationImportance.ipynb
-|
+| 
 └── notebooks              
     ├── baseline.ipynb
     ├── EDA_Minyong.ipynb            
@@ -181,7 +181,7 @@
 
 ---
 
-**최유라 T1212**    
+**최유라 T1212**
 **[[Github](https://github.com/Yuuraa)]  [[Blog](https://velog.io/@yoorachoi)]**
 
 - EDA - 학습 데이터, 테스트 데이터 분포 파악
